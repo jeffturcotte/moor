@@ -1,14 +1,12 @@
 <?php
 /**
- * Moor - PHP 5 Controller Toolkit
+ * Moor - PHP 5 Routing/Controller Library
  *
  * Copyright (c) 2009 Jeff Turcotte
  *
  * @author  Jeff Turcotte
  * @license MIT License
  * @version 0.1
- *
- * @noobs This is alpha software. Use at your own risk.
  *
  * See README
  */
@@ -146,13 +144,10 @@ class Moor {
 	 *
      * @return void
 	 */
-	static function triggerNotFound($callback=null)
+	static function triggerNotFound()
 	{
 		header("HTTP/1.1 404 Not Found");
-		$_SERVER['REQUEST_METHOD'] = 'GET';
-		
-		if ($callback) self::$configuration['on_not_found'] = $callback;
-	 
+		$_SERVER['REQUEST_METHOD'] = 'GET'; 
 		throw new MoorNotFoundException();
 	}
 
@@ -164,81 +159,6 @@ class Moor {
 	static function triggerContinue()
 	{
 		throw new MoorContinueException();
-	}
-	
-	/**
-	 * undocumented function
-	 *
-	 * @param string $view_name 
-	 * @param string $data 
-	 * @param string $layout 
-	 * @return void
-	 */
-	
-	static function render($Moor_format, $Moor_view, $Moor_data=array(), $Moor_layout=null)
-	{   
-	    // get public / non-static data from an object
-	    if (is_object($Moor_data)) {
-	        $Moor_obj_reflection = new ReflectionObject($Moor_data);
-	        $Moor_obj_properties = $Moor_obj_reflection->getProperties();
-    	    foreach($Moor_obj_properties as $Moor_property) {
-    	        if ($Moor_property->isPublic() && !$Moor_property->isStatic()) {
-    	            ${$Moor_property->getName()} = $Moor_property->getValue($Moor_data);
-    	        }
-    	    }
-    	}
-    	    	
-    	if (is_array($Moor_data)) {
-    		extract($Moor_data, EXTR_REFS);
-    	}
-    	    	
-    	fCore::expose(get_defined_vars());
-    	die();
-    	
-    	/*
-    	$view_extension = '.html.php';
-
-        $path_to_views = self::$configuration['path_to_views'] . '/';
-		$path_to_views = preg_replace('#/+#', '/', $path_to_views);
-
-		$view_contents = '';
-		$layout_contents = '';
-
-		extract(self::$data, EXTR_REFS);
-
-		ob_start();
-		include($path_to_views . $view . $view_extension);
-		$view_contents = ob_get_contents();
-		ob_clean();
-
-		if (file_exists($path_to_views . $layout . $view_extension)) {
-			ob_start();
-			include($path_to_views . $layout . $view_extension);
-			$layout_contents = ob_get_contents();
-			ob_clean();
-		}
-
-		header('Content-Type: text/html; charset=utf-8');
-	    echo str_replace('<!--VIEW-->', $view_contents, $layout_contents);
-		exit();
-    	}
-    	*/
-	    
-	}
-	
-	protected static function getPublicDataFromObject($object)
-	{
-	    $data = array();
-	    
-    	$obj_reflection = new ReflectionObject($data);
-    	$obj_properties = $obj_reflection->getProperties();
-        foreach($obj_properties as $property) {
-        	if ($property->isPublic() && !$property->isStatic()) {
-        	    $data[$property->getName()] =& $property->getValue($data);
-        	}
-        }
-        
-        return $data;
 	}
 	
 	/**
@@ -259,9 +179,5 @@ class Moor {
 	static function routeError($e)
 	{
 	    echo '<h1>Error</h1>';
-	
-		echo '<pre>';
-		print_r($e->getMessage());
-		echo '</pre>';
 	}
 }

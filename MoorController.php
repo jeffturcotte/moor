@@ -1,14 +1,12 @@
 <?php
 /**
- * MoorController - Rails-esque controller extension for Moor
+ * MoorController - Rails-esque Controller extension for Moor
  *
  * Copyright (c) 2009 Jeff Turcotte
  *
  * @author  Jeff Turcotte
  * @license MIT License
  * @version 0.1
- *
- * @noobs This is alpha software. Use at your own risk.
  *
  * See README
  */
