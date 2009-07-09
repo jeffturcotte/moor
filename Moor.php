@@ -5,90 +5,110 @@
  * Copyright (c) 2009 Jeff Turcotte
  *
  * @author  Jeff Turcotte
- * @license MIT License
+ * @license MIT (see LICENSE)
  * @version 0.1
  *
  * See README
  */
 
+// Moor specific Exceptions
+
+if (!class_exists('MoorRoute', FALSE)) {
+    include 'MoorRoute.php';
+}
+
 class MoorNotFoundException extends Exception {}
 class MoorContinueException extends Exception {}
- 
+
 class Moor {
+    public static $debug = false;
+    public static $debug_messages = array();
+
+    public static $running = false;
+    public static $routes = array();
+    public static $request_path = null;
+
+    protected static $mount_path = null;    
+
+    public static $params = array();
     
-	static $url_matchers      = array();
-	static $url_callbacks     = array();
-	static $url_callback_args = array();
-	
-	
-	// class configuration
-	static $configuration = array(
-		'on_not_found' => 'Moor::routeNotFound', // a callback for when a MercyNotFoundException is thrown
-		'on_error'     => 'Moor::routeError',  // a callback for when an exception is thrown
-		'views_path'   => null
-	);
-	
     /**
-     * configures the class
+     * Options
      *
+     * pollute boolean       pollute $_GET with the matched url params and $_SERVER['REQUEST_PATH'] with any mounts
+     * on_missing callback
+     */
+    public static $options = array(
+        'pollute' => true,
+        'on_not_found' => 'Moor::routeMissing'
+    );
+        
+    /**
+     * undocumented function
      *
-     */	
-	static function configure($options) {
-		self::$configuration = array_merge(self::$configuration, $options);
-	}
+     * @return void
+     * @author Jeff Turcotte
+     **/
+    static function getParam($name)
+    {
+        if (isset(self::$params[$name])) {
+            return self::$params[$name];
+        }
+        return null;
+    }
+    
+    /**
+     * undocumented function
+     *
+     * @return void
+     * @author Jeff Turcotte
+     **/
+    static function resetParams()
+    {
+        self::$params = array();
+    }
+	
 	
 	/**
-	 * creates a route map array from a magic route string
+	 * mount a callback to a url
 	 *
-	 * @param  string $magic_route  *See 'route' method comments for details*
-	 * @return array $route_map     The route map array
-	 */	
-	static function createUrlMatcher($magic_route)
-	{
-	    // squeeze the slashes
-		$url_regex = preg_replace('#/+#', '/', "^/{$magic_route}");
-	    $url_regex = preg_replace_callback('/([:@#])[a-zA-Z_]+([0-9\{\,\}]+)?/', __CLASS__.'::createParameterMatcherCallback', $url_regex);
-        $url_regex = preg_replace('#/#',  '\/', $url_regex);
-
-		$route_map = array("/{$url_regex}/");        
-		
-		preg_match_all('/[@#:]([a-zA-Z_]+)/', $magic_route, $matches);
-		
-		return isset($matches[1]) ? array_merge($route_map, $matches[1]) : $route_map;
-	}
-	
-	/**
-	 * a preg_match_replace callback for finding parameters
-	 *
-	 * @param  string $matches  preg_match matches
-	 * @return string The modified param matcher
+	 * @param string $static_url_matcher 
+	 * @param string $callback 
+	 * @param string $callback_arguments 
+	 * @return void
 	 */
-	static function createParameterMatcherCallback($matches)
+	static function mount($static_url_matcher, $callback, $callback_arguments=array())
 	{
-	    switch($matches[1]) {
-    		case '#': $type = '[0-9]'; break;
-    		case '@': $type = '[a-zA-Z_]'; break;
-    		case ':': $type = '[0-9a-zA-Z_]'; break;
-    	}
-
-    	$length = (isset($matches[2])) ? $matches[2] : '+';
-
-    	return '(' . $type . $length . ')';
+	    self::captureRequestPath();
+	    
+	    $static_url_matcher = preg_replace('#(^/+|/+$)#', '', $static_url_matcher);
+	    $static_url_regex   = preg_replace('#/+#', '/', "#^/{$static_url_matcher}/?#");
+	    
+	    if (preg_match($static_url_regex, self::$request_path)) {
+	        self::$request_path = preg_replace("#^/{$static_url_matcher}#", '/', self::$request_path);
+	        
+	        // 
+	        if (self::$options['pollute'] == true) {
+	            $_SERVER['REQUEST_PATH'] = self::$request_path;
+	        }
+	        
+	        call_user_func_array($callback, $callback_arguments);
+	        exit();
+	    } 
 	}
 	
 	/**
-	 * associates a matching HTTP REQUEST PATH to a callback function and extracts parameters to $_GET
+	 * associates a matching HTTP REQUEST PATH to a callback function and extracts parameters
 	 *
-	 * @param  mixed $url_matcher   See below
-     * @param  mixed $url_callback  The callback or array of callbacks to pass directly to call_user_func_array
+	 * @param  mixed $url_matcher
+     * @param  callback $route_callback
+     * @param  array $route_callback_arguments
 	 */
-	static function map($url_matcher, $url_callback, $arguments=array())
+	static function map($url_matcher, $route_callback, $route_callback_arguments=array())
 	{
-		self::$url_matchers[]      = (is_array($url_matcher)) ? $url_matcher : self::createUrlMatcher($url_matcher);
-		self::$url_callbacks[]     = $url_callback;
-		self::$url_callback_args[] = $arguments;
+        self::$routes[] = new MoorRoute($url_matcher, $route_callback, $route_callback_arguments);
 	}
-	
+		
 	/**
 	 * run all of the routes that have been established
 	 *
@@ -96,29 +116,26 @@ class Moor {
 	 */
 	static function run()
 	{
+	    if (self::$running == true) {
+	        die("only run(); once");
+	    }
+	    
+	    self::$running = true;
+	    self::captureRequestPath();
+	    
 	    try {
-	        
-			foreach(self::$url_matchers as $key => $matcher) {
-				try {
-		    
-			        $request_path = preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']);        	   
-	        		if (!preg_match($matcher[0], $request_path, $matches)) continue;
-        			
-	        		// insert url params
-	        		$params =& $_GET;
-	        		if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-	        		    $params =& $_POST;
-	        		}
+	        foreach(self::$routes as $route) {
 
-	    			$matches_count = count($matches);
-	    			for ($n = 1; $n < $matches_count; $n++) {
-	    				if (isset($matcher[$n])) $params[$matcher[$n]] = $matches[$n];
-	    			}
-    			
-	    			$callback  =& self::$url_callbacks[$key];
-	    			$arguments =& self::$url_callback_args[$key];
-    			
-	    		    call_user_func_array($callback, $arguments); 
+				try {
+				    self::resetParams();
+		      		self::parseRoute($route);
+		      		
+		      		// add params to $_GET if pollute is on
+		      		if (self::$options['pollute'] == true) {
+		      		    $_GET = array_merge($_GET, self::$params);
+		      		}
+	                
+	        	    call_user_func_array($route->callback, $route->callback_args); 
 					exit();
 
 				} catch (MoorContinueException $e) {
@@ -129,16 +146,38 @@ class Moor {
 		    self::triggerNotFound();
 		
 		} catch (MoorNotFoundException $e) {
-			call_user_func_array(self::$configuration['on_not_found'], array($e));
-
-		} catch (Exception $e) {
-			call_user_func_array(self::$configuration['on_error'], array($e));
-
-		}
-		
+		    if (is_callable(self::$options['on_not_found'])) {
+		        call_user_func(self::$options['on_not_found']);
+		    }
+		} 
 		exit();
 	}
 	
+	
+	// matches a route and extacts the parameters
+	protected static function parseRoute($route)
+    {
+        if (!preg_match($route->matcher[0], self::$request_path, $matches)) {
+		    self::triggerContinue();
+		}
+        
+       	$matches_count = count($matches);
+		for ($n = 1; $n < $matches_count; $n++) {
+			if (isset($route->matcher[$n])) {
+			    self::$params[$route->matcher[$n]] = $matches[$n];
+			}
+		}
+    }
+	
+	// grabs the request path for internal usage
+	protected static function captureRequestPath() 
+	{
+	    if (self::$request_path === null) {
+	        self::$request_path = preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']);        
+	        self::$request_path = preg_replace('#\/+$#', '', self::$request_path);
+	    }	   	    
+	}
+		
 	/**
 	 * sets appropriate headers and throws a MoorNotFoundException
 	 *
@@ -166,18 +205,44 @@ class Moor {
 	 *
      * @return void
 	 */
-	static function routeNotFound() 
+	static function routeMissing() 
 	{
-	    echo '<h1>Not Found</h1>';
+	    echo '<h1>404 Not Found</h1>';
 	}
 
 	/**
 	 * default error callback
 	 *
+	 * @param  Exception $e  The uncaught exception 
      * @return void
 	 */
 	static function routeError($e)
 	{
-	    echo '<h1>Error</h1>';
+	    self::printHTMLHeader('Error');
+	    ?>
+	    
+	    <div id="error">
+	        <h1>Error</h1>
+	    
+	        <h2><small>Uncaught</small> <strong><?php echo get_class($e); ?></strong> <small>says:</small></h2>
+	    
+    	    <blockquote><?php echo $e->getMessage() ?></blockquote>
+	    
+    	    <h2>Where?</h2>
+	    
+    	    <p>Line <?php echo $e->getLine() ?> in <?php echo $e->getFile() ?></p>
+	    
+    	    <h2>PHP Trace</h2>
+	    
+    	    <p><?php echo nl2br($e->getTraceAsString()) ?></p>
+    	    
+    	    <h2>Routing Trace</h2>
+    	    
+    	    <p><?php echo implode('<br />', self::$debug_messages)?></p>
+	    </div>
+	    
+	    <?php
+	    self::printHTMLFooter();
 	}
+	
 }
