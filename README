@@ -9,8 +9,7 @@ Moor - PHP 5 Routing/Controller Library
     1) Introduction
     2) Hello World
     3) Param Matching & Extraction
-    4) MoorController
-
+    4) MoorResource
 
 -- 1 -- Introduction
 
@@ -27,7 +26,7 @@ Moor - PHP 5 Routing/Controller Library
         The URL router. Matches a URL pattern, extracts 
         defined parameters from it, and runs a callback.
 
-    MoorController.php
+    MoorResource.php
         A Rails-esque controller extension for Moor. Not required,
         but worthwhile on larger projects.
     
@@ -54,37 +53,8 @@ Moor - PHP 5 Routing/Controller Library
 
 -- 3 -- Param Matching & Extraction
 
-
-    Moor can extract parameters from your URLs. Prefixes determine what kind of match
-    to accept:
+Coming Soon
     
-        # => a numeric value
-        @ => an alpha value, including underscores and dashes
-        : => an alphanumeric value, including underscores and dashes
-    
-    Moor::map('/user/#id', 'User::read');
-        will match the digit id and extract it to $_GET or $_POST depending on your 
-        request method. i.e. GET /user/5 will yield $_GET['id'] == '5' and run the 
-        static method callback User::read.
-        
-        other urls that will be matched by this pattern:
-            /user/200
-            /user/200-john
-            /user/6053qwerty
-    
-    Moor::map('/user/@action$', 'add_user');
-        will match the alpha action. i.e. POST /user/add will yield
-        $_POST['action'] == 'add' and run the global function callback add_user
-        
-        * the $ at the end of the matcher specifies that we don't want to allow any 
-          type of slug after this point. Only an extact match will be accepted.
-     
-    There are a few suffix operators as well:
-    
-        {n,n} => a traditional regex range
-            $ => a traditional regex end delimiter, to enable exact matches and disallow slugs
-    
-    
--- 4 -- MoorController
+-- 4 -- MoorResource
 
 Coming Soon.
