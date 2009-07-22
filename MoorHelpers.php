@@ -34,7 +34,7 @@ class MoorHelpers {
 	}
 	
 	/**
-	 * Adds standard controller routes to Moor for routing
+	 * Adds standard controller routes
 	 *
 	 * @return void
 	 */

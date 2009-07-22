@@ -296,7 +296,7 @@ class Moor {
 	private static function createStandardURLMatcher(&$url_matcher)
 	{
 		if (!is_array($url_matcher)) {
-			$url_regex = preg_replace('/:[a-zA-Z_]+/', '([0-9a-zA-Z_]+)', $url_matcher);
+			$url_regex = preg_replace('/:[a-zA-Z_]+/', '([0-9a-zA-Z_-]+)', $url_matcher);
 		
 			$url_regex = str_replace(
 				array("&",  ",",  "/",  ":",  ";",  "=",  "?",  "@",  "."),
