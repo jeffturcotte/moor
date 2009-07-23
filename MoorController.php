@@ -21,9 +21,9 @@ abstract class MoorController {
 	 *
 	 * @var array
 	 */
-	private static $options = array(
+	public static $options = array(
 		'default_controller' => 'index',
-		'default_action'   => 'index',
+		'default_action'     => 'index',
 		'controller_to_class_callback' => 'MoorController::convertControllerToClass',
 		'class_to_controller_callback' => 'MoorController::convertClassToController'
 	);

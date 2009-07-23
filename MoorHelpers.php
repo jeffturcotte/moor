@@ -29,7 +29,7 @@ class MoorHelpers {
 	 * @return void
 	 */
 	static function yankExtensionCallback() {
-		Moor::setRequestPath(preg_replace(self::$yank_extension_pattern, '', Moor::$request_path));
+		Moor::setRequestPath(preg_replace(self::$yank_extension_pattern, '', Moor::getRequestPath()));
 		Moor::triggerContinue();
 	}
 	

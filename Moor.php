@@ -103,9 +103,15 @@ class Moor {
 		
 		foreach(self::$mounts as $name => $mount) {
 			if (strpos(self::$request_path, $mount['path']) === 0) {
-				self::$request_path = substr(self::$request_path, 0, strlen($mount['path'])-1);
-				self::$current_mount = $name;				
+				self::$request_path = substr(self::$request_path, strlen($mount['path']));
 				
+				// fix slashes
+				if (strpos(self::$request_path, '/') !== 0) {
+					self::$request_path = '/' . self::$request_path;
+				}
+				
+				self::$current_mount = $name;
+
 				call_user_func_array($mount['callback'], $mount['args']);
 				exit();
 			}
@@ -189,16 +195,16 @@ class Moor {
 					self::addMessage(
 						__CLASS__,
 						__FUNCTION__,
-						"{$url_matcher[0]} didn't match requested " . self::$request_path
-					);					
-
+						"{$url_matcher[0]} didn't match requested URI"
+					);
+				
 					continue;
 				}
 				
 				self::addMessage(
 					__CLASS__,
 					__FUNCTION__,
-					"{$url_matcher[0]} matched requested " . self::$request_path
+					"{$url_matcher[0]} matched requested URI. Calling " . $route['callback'] . '.'
 				);
 				
 				$matches_count = count($matches);
@@ -221,6 +227,12 @@ class Moor {
 				break;
 			}
 		}
+			
+		self::addMessage(
+			__CLASS__,
+			__FUNCTION__,
+			"Calling `on_not_found` callback"
+		);
 			
 		call_user_func(self::$options['on_not_found']);
 	}
@@ -263,7 +275,10 @@ class Moor {
 	 */
 	public static function getParam($name)
 	{
-		return self::$params[$name];
+		if (isset(self::$params[$name])) {
+			return self::$params[$name];
+		} 
+		return null;
 	}
 	
 	/**
@@ -324,7 +339,7 @@ class Moor {
 	 */
 	public static function addMessage($class, $function, $message) 
 	{
-		self::$messages[] = "{$class}::{$function}: {$message}";
+		self::$messages[] = "<span class=\"method\">{$class}::{$function}:</span> {$message}";
 	}
 	
 	/**
