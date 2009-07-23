@@ -26,7 +26,7 @@ Moor - PHP 5 Routing/Controller Library
         The URL router. Matches URL patterns, extracts 
         defined parameters from it, and runs a callback.
 
-    MoorResource.php
+    MoorController.php
         A Rails-esque controller extension for Moor. Not required,
         but worthwhile most of the time.
 
