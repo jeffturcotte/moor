@@ -93,8 +93,6 @@ http://www.regular-expressions.info/named.html
 	Moor::run();
 	?>
 	
----
-	
 ## Initial Set Up
 
 	
@@ -107,8 +105,6 @@ Not much is needed to set up Moor. With your HTTP Server of choice, simply route
 In this file, you can load all your libraries, define your Moor options/routes, configure your app, 
 
 For Moor, only load.php needs to be included.
-
----
 
 ## Options
 
@@ -142,8 +138,6 @@ The options available are:
 
 	callback_404 (callback)  
 	Callback for when a route is not found upon run() (or when triggerContinue() is called)
-
----
 
 ## Callback Actions
 	
@@ -220,8 +214,6 @@ Keeping track of all the links in your web app can become a tedious process. For
 	Moor::run();
 	
 Using the Moor links, if you ever change a URL, you edit it in one place and it will cascade throughout your application.
-
----
 
 ## Controller Actions
 
@@ -422,8 +414,6 @@ Here's a simple example of including a view:
 		}
 	}
 
----
-	
 ## Advanced Tips
 
 ### Controller Routing/Linking Functions
