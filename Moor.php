@@ -110,12 +110,13 @@ class Moor {
 			}
 		
 			$path = self::$options['path'];
-		
-			if (!file_exists($path . '/' . $controller_class)) {
+			$file = $path . '/' . $controller_class . '.php';
+
+			if (!file_exists($file)) {
 				self::triggerContinue();
 			}
 
-			include $path . '/' . $controller_class;
+			include $file;
 		}
 
 		if (!is_subclass_of($controller_class, 'MoorController')) {

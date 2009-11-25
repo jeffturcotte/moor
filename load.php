@@ -12,7 +12,7 @@ if (!function_exists('link_to')) {
 	}
 }
 
-if (!function_exists('route')) {
+if (!function_exists('route_to')) {
 	function route_to() {
 		$args = func_get_args();
 		return call_user_func_array('Moor::routeTo', $args);
