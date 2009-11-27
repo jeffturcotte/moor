@@ -17,7 +17,7 @@ class Moor {
 	 * 
 	 * path ............... string: Absolute path to where controller classes can be found
 	 * pollute ............ boolean: Whether or not MoorController should create __APP__, __CONTROLLER__, etc. constants.
-	 * debug .............. boolean: Display debug messages. (VERY helpful in learning what Moor does with your URL)
+	 * debug .............. boolean: Display debug messages on default 404 callback. (VERY helpful in learning what Moor does with your URL)
 	 * param_app .......... string: The $_GET param to accept as an app (default: 'app')
 	 * param_controller ... string: The $_GET param to accept as a controller (default: 'controller')
 	 * param_action ....... string: The $_GET param to accept as an action (default: 'action')
@@ -34,6 +34,13 @@ class Moor {
 		'param_action' => 'action',
 		'callback_404' => 'Moor::routeNotFoundCallback'
 	);
+	
+	/**
+	 * The debug messages
+	 *
+	 * @var array (of strings)
+	 */
+	private static $debug_messages = array();
 	
 	/**
 	 * The captured request path
@@ -82,6 +89,19 @@ class Moor {
 	// ===========
 	
 	/**
+	 * Adds a debug message to the stack
+	 *
+	 * @param string $class 
+	 * @param string $method
+	 * @param string $message
+	 * @return void
+	 **/
+	public function addDebugMessage($class, $method, $message)
+	{
+		array_push(self::$debug_messages, "{$method}  -->  $message");
+	}
+	
+	/**
 	 * Dispatch a MoorController class from app/controller/action $_GET params
 	 *
 	 * @return void
@@ -93,6 +113,7 @@ class Moor {
 		$param_action = self::$options['param_action'];
 	
 		if (!isset($_GET[$param_app]) || !isset($_GET[$param_controller]) || !isset($_GET[$param_action])) {
+			self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue: Controller requires '{$param_app}', '{$param_controller}' and '{$param_action}' in \$_GET");
 			self::triggerContinue();
 		}
 	
@@ -111,26 +132,42 @@ class Moor {
 		
 			$path = self::$options['path'];
 			$file = $path . '/' . $controller_class . '.php';
-
+		
 			if (!file_exists($file)) {
+				self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue: {$file} doesn't exist");
 				self::triggerContinue();
 			}
+
+			self::addDebugMessage(__CLASS__, __FUNCTION__, "Found {$controller_class}.php");
 
 			include $file;
 		}
 
 		if (!is_subclass_of($controller_class, 'MoorController')) {
+			self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue: $controller_class doesn't not extend MoorController");
 			self::triggerContinue();
 		}
 	
 		// make sure the action method is public
 		if (!in_array($action, get_class_methods($controller_class))) {
+			self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue: Action method '{$action}' is not public");
 			self::triggerContinue();
 		}
 	
 		// construct controller
 		new $controller_class();
 	}
+	
+	/**
+	 * Returns an array of debug messages
+	 *
+	 * @return array
+	 **/
+	public function getDebugMessages()
+	{
+		return self::$debug_messages;
+	}
+	
 	
 	/**
 	 * Gets the value of an option, defined in self::$options
@@ -291,7 +328,13 @@ class Moor {
 	 */
 	public static function routeNotFoundCallback()
 	{
+		header("HTTP/1.1 404 Not Found");
 		echo '<h1>NOT FOUND</h1>';
+		
+		if (self::getOption('debug')) {
+			echo '<h2>Moor Debug</h2>';
+			echo join('<br />', Moor::getDebugMessages());
+		}
 	}
 
 	/**
@@ -387,6 +430,8 @@ class Moor {
 	 */
 	public static function run() 
 	{
+		self::addDebugMessage(__CLASS__, __FUNCTION__, 'Routing started');
+		
 		// transact GET so any variables 
 		// we set can be rolled back.
 		$old_GET = $_GET;
@@ -394,33 +439,43 @@ class Moor {
 		
 		self::$request_path = preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']);
 		
+		self::addDebugMessage(__CLASS__, __FUNCTION__, 'REQUEST PATH set to ' . self::$request_path);
+		
 		$req_method = isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : 'GET';
 
 		foreach(self::$routes as $route):
 			// reset GET
 			$_GET = $old_GET;
 
-			// if route callback was 
 			if (!isset($route->callbacks['*']) && !isset($route->callbacks[$req_method])) {
 				continue;
 			}
 						
 			try {
 				if (!preg_match($route->expression, self::$request_path, $matches)) {
+					self::addDebugMessage(__CLASS__, __FUNCTION__, 'Continue: No Match for "' . $route->definition . '"');
 					continue;
 				}
 				
+				self::addDebugMessage(__CLASS__, __FUNCTION__, 'Matched ' . $route->definition);
+				
 				foreach($matches as $name => $param):
 					if (is_string($name)) {
+						self::addDebugMessage(__CLASS__, __FUNCTION__, "Extracting Param: \$_GET['{$name}'] = $param");
 						$_GET[$name] = $param;
 					}
 				endforeach;
 			
-				$_GET = array_merge($_GET, $route->overrides);
+				foreach($route->overrides as $name => $param) {
+					self::addDebugMessage(__CLASS__, __FUNCTION__, "Overriding Param: \$_GET['{$name}'] = $param");
+					$_GET[$name] = $param;
+				}
 
 				$callback = isset($route->callbacks[$req_method]) 
 					? $route->callbacks[$req_method] 
 					: $route->callbacks['*'];
+					
+				self::addDebugMessage(__CLASS__, __FUNCTION__, "Calling callback: {$callback}");
 					
 				call_user_func($callback); 
 				exit();
@@ -431,6 +486,8 @@ class Moor {
 				break;
 			}
 		endforeach;
+		
+		self::addDebugMessage(__CLASS__, __FUNCTION__, "No More Routes. Calling 'callback_404'");
 			
 		call_user_func(self::$options['callback_404']);
 		exit();

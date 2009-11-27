@@ -127,6 +127,10 @@ The options available are:
 	pollute (boolean)
 	Whether or not MoorController should create __APP__, __CONTROLLER__, etc. constants. (default: true)
 	
+	debug (boolean) 
+	Display debug messages on default 404 callback. (default: false)
+	(or access messages yourself with Moor::getDebugMessages())
+	
 	param_app (string)
 	The $_GET param to accept as an app (default: 'app')
 

@@ -100,6 +100,7 @@ class MoorRoute {
 	function __construct($serial, $name, $definition, $callbacks=null, $overrides=array()) {
 		$this->serial = (int) $serial;
 		$this->name = $name;
+		$this->definition = $definition;
 		$this->shorthand = self::createShortHandRouteExpression($definition);
 		$this->expression = self::createRouteExpression($definition);
 		$this->shorthand_params = self::parseParamsFromShorthand($this->shorthand);
