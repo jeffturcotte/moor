@@ -23,7 +23,7 @@ class MoorController {
 	 *
 	 * @return void
 	 */
-	public function __construct() 
+	public function __construct($action_method) 
 	{	
 		self::$__app = $_GET[Moor::getOption('param_app')];
 		self::$__controller = $_GET[Moor::getOption('param_controller')];
@@ -41,7 +41,7 @@ class MoorController {
 		$this->__before();
 		
 		try {
-		    $this->{self::$__action}();
+		    $this->{$action_method}();
 		    
 		} catch (Exception $e) {
 		    
@@ -80,15 +80,15 @@ class MoorController {
 	}
 	
 	public static function getAppPath() {
-		return '/' . self::$__app;
+		return DIRECTORY_SEPARATOR . self::$__app;
 	}
 	
 	public static function getControllerPath() {
-		return self::getAppPath() . '/' . self::$__controller;
+		return self::getAppPath() . DIRECTORY_SEPARATOR . self::$__controller;
 	}
 	
 	public static function getActionPath() {
-		return self::getControllerPath() . '/' . self::$__action;
+		return self::getControllerPath() . DIRECTORY_SEPARATOR . self::$__action;
 	}
 
 }

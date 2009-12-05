@@ -3,10 +3,10 @@
  * Routing/Controller library for PHP5
  *
  * @copyright  Copyright (c) 2009 Jeff Turcotte
- * @author     Jeff Turcotte <jeff.turcotte@gmail.com>
+ * @author     Jeff Turcotte [jt] <jeff.turcotte@gmail.com>
  * @license    MIT (see LICENSE)
  * @package    Moor
- * @link       http://github.com/moor
+ * @link       http://github.com/jeffturcotte/moor
  *
  * @version    1.0.0b
  */
@@ -36,9 +36,16 @@ class Moor {
 	);
 	
 	/**
+	 * Class specific caching
+	 *
+	 * @var array
+	 */
+	private static $cache = array();
+	
+	/**
 	 * The debug messages
 	 *
-	 * @var array (of strings)
+	 * @var array
 	 */
 	private static $debug_messages = array();
 	
@@ -102,6 +109,41 @@ class Moor {
 	}
 	
 	/**
+	 * Converts an `underscore_notation` or `camelCase` string to `camelCase`
+	 * 
+	 * Derived from MIT fGrammer::camelize by Will Bond <will@flourishlib.com>
+	 * Source: http://flourishlib.com/browser/fGrammar.php
+	 *
+	 * @param  string  $original The string to convert
+	 * @param  boolean $upper    If the camel case should be `UpperCamelCase`
+	 * @return string  The converted string
+	 */
+	static public function camelize($original, $upper=FALSE)
+	{
+		$upper = (int) $upper;
+		$key   = "camelize/{$upper}/{$original}";
+		
+		if (isset(self::$cache[$key])) {
+			return self::$cache[$key];		
+		}
+		
+		$string = $original;
+		
+		// Check to make sure this is not already camel case
+		if (strpos($string, '_') === FALSE) {
+			if ($upper) { $string = strtoupper($string[0]) . substr($string, 1); }
+			
+		// Handle underscore notation
+		} else {
+			$string = strtolower($string);
+			if ($upper) { $string = strtoupper($string[0]) . substr($string, 1); }
+			$string = preg_replace('/(_([a-z0-9]))/e', 'strtoupper("\2")', $string);		
+		}
+		
+		return (self::$cache[$key] = $string);
+	}
+	
+	/**
 	 * Dispatch a MoorController class from app/controller/action $_GET params
 	 *
 	 * @return void
@@ -113,7 +155,7 @@ class Moor {
 		$param_action = self::$options['param_action'];
 	
 		if (!isset($_GET[$param_app]) || !isset($_GET[$param_controller]) || !isset($_GET[$param_action])) {
-			self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue: Controller requires '{$param_app}', '{$param_controller}' and '{$param_action}' in \$_GET");
+			self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue Routing: Controller requires '{$param_app}', '{$param_controller}' and '{$param_action}' in \$_GET");
 			self::triggerContinue();
 		}
 	
@@ -121,41 +163,52 @@ class Moor {
 		$controller = $_GET[$param_controller];
 		$action = $_GET[$param_action];
 	
-		// camelize
-		$controller_class = preg_replace('#_+#',' ', $app . ' ' . $controller . ' controller');
-		$controller_class = str_replace(' ', '', ucwords($controller_class));
-	
-		if (!class_exists($controller_class, FALSE)) {
-			if (empty(self::$options['path'])) {
-				exit('Moor Error: You must set the path option.');
-			}
+		$namespace = self::camelize($app, TRUE);
+		$class     = self::camelize($controller, TRUE);
+		$method    = self::camelize($action);
+
+		$is_5_3    = (strpos(phpversion(), '5.3') === 0);		
+		$dir_sep   = DIRECTORY_SEPARATOR;
+		$path      = self::$options['path'];
+
+		$class_paths = array();
 		
-			$path = self::$options['path'];
-			$file = $path . '/' . $controller_class . '.php';
+		// look for properly namespaced class if running 5.3
+		if ($is_5_3) $class_paths["\\{$namespace}\\{$class}"] = "{$path}{$dir_sep}{$namespace}{$dir_sep}{$class}.php";
+		$class_paths["{$namespace}_{$class}"] = "{$path}{$dir_sep}{$namespace}{$dir_sep}{$namespace}_{$class}.php";
+		$class_paths["{$namespace}_{$class}"] = "{$path}{$dir_sep}{$namespace}_{$class}.php";
 		
-			if (!file_exists($file)) {
-				self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue: {$file} doesn't exist");
-				self::triggerContinue();
+		foreach($class_paths as $classname => $path) {
+			if (!class_exists($classname, FALSE)) {
+				if (!file_exists($path)) {
+					self::addDebugMessage(__CLASS__, __FUNCTION__, "Can't find {$classname} at {$path}");
+					continue;
+				} 
+				self::addDebugMessage(__CLASS__, __FUNCTION__, "Found {$classname} at $path");
+				include_once $path;
 			}
+			if (class_exists($classname, FALSE)) {
 
-			self::addDebugMessage(__CLASS__, __FUNCTION__, "Found {$controller_class}.php");
+				// make sure class is extends MoorController
+				if (!is_subclass_of($classname, 'MoorController')) {
+					self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue Routing: $controller_class doesn't not extend MoorController");
+					self::triggerContinue();
+				}
 
-			include $file;
+				// make sure the action method is public
+				if (!in_array($method, get_class_methods($classname))) {
+					self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue Routing: Action method '{$method}' is not public");
+					self::triggerContinue();
+				}
+				
+				self::addDebugMessage(__CLASS__, __FUNCTION__, "Instantiating {$classname}");
+				
+				new $classname($method);
+			}
 		}
-
-		if (!is_subclass_of($controller_class, 'MoorController')) {
-			self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue: $controller_class doesn't not extend MoorController");
-			self::triggerContinue();
-		}
-	
-		// make sure the action method is public
-		if (!in_array($action, get_class_methods($controller_class))) {
-			self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue: Action method '{$action}' is not public");
-			self::triggerContinue();
-		}
-	
-		// construct controller
-		new $controller_class();
+		
+		self::addDebugMessage(__CLASS__, __FUNCTION__, "Continue Routing: No controller class found");
+		self::triggerContinue();
 	}
 	
 	/**
