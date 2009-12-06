@@ -40,7 +40,7 @@ class Moor {
 	 *
 	 * @var array
 	 */
-	private static $cache = array();
+	public static $cache = array();
 	
 	/**
 	 * The debug messages
@@ -68,14 +68,14 @@ class Moor {
 	 *
 	 * @var array
 	 */
-	private static $routes = array();
+	public static $routes = array();
 
 	/**
 	 * An array of route serials indexed by route names
 	 *
 	 * @var array
 	 */
-	private static $names  = array();
+	public static $names  = array();
 
 	/**
 	 * An array of route serials indexed by route hashes
@@ -121,7 +121,7 @@ class Moor {
 	static public function camelize($original, $upper=FALSE)
 	{
 		$upper = (int) $upper;
-		$key   = "camelize/{$upper}/{$original}";
+		$key   = __FUNCTION__ . "/{$upper}/{$original}";
 		
 		if (isset(self::$cache[$key])) {
 			return self::$cache[$key];		
@@ -131,13 +131,55 @@ class Moor {
 		
 		// Check to make sure this is not already camel case
 		if (strpos($string, '_') === FALSE) {
-			if ($upper) { $string = strtoupper($string[0]) . substr($string, 1); }
+			if ($upper) { 
+				$string = strtoupper($string[0]) . substr($string, 1); 
+			}
 			
 		// Handle underscore notation
 		} else {
 			$string = strtolower($string);
 			if ($upper) { $string = strtoupper($string[0]) . substr($string, 1); }
 			$string = preg_replace('/(_([a-z0-9]))/e', 'strtoupper("\2")', $string);		
+		}
+		
+		return (self::$cache[$key] = $string);
+	}
+	
+	/**
+	 * Converts a `camelCase` or `underscore_notation` string to `underscore_notation`
+	 *
+	 * Derived from MIT fGrammer::camelize by Will Bond <will@flourishlib.com>
+	 * Source: http://flourishlib.com/browser/fGrammar.php
+	 *
+	 * @param  string $string  The string to convert
+	 * @return string  The converted string
+	 */
+	static public function underscorize($string)
+	{
+		$key = __FUNCTION__ . "/{$string}";
+		
+		if (isset(self::$cache[$key])) {
+			return self::$cache[$key];		
+		}
+		
+		$original = $string;
+		$string = strtolower($string[0]) . substr($string, 1);
+		
+		// If the string is already underscore notation then leave it
+		if (strpos($string, '_') !== FALSE) {
+		
+		// Allow humanized string to be passed in
+		} elseif (strpos($string, ' ') !== FALSE) {
+			$string = strtolower(preg_replace('#\s+#', '_', $string));
+		
+		} else {
+			do {
+				$old_string = $string;
+				$string = preg_replace('/([a-zA-Z])([0-9])/', '\1_\2', $string);
+				$string = preg_replace('/([a-z0-9A-Z])([A-Z])/', '\1_\2', $string);
+			} while ($old_string != $string);
+			
+			$string = strtolower($string);
 		}
 		
 		return (self::$cache[$key] = $string);
@@ -241,56 +283,81 @@ class Moor {
 	 * @param array $params 
 	 * @return void
 	 */
-	public static function linkTo() 
+	public static function linkTo($callback, $params=array()) 
 	{	
-		$args   = func_get_args();
-		$params = array();
-
-		while ($arg = array_pop($args)) {
-			if (is_array($arg)) {
-				$params = array_merge($params, $arg);
-
-			} else if (!isset($action)) {
-				$params['action'] = $arg;
-				$action = TRUE;
-
-			} else if (!isset($controller)) {
-				$params['controller'] = $arg;
-				$controller = TRUE;
-
-			} else if (!isset($app)) {
-				$params['app'] = $arg;
-				$app = TRUE;
-
-			} else {
-				break;
-			}
+		$name = MoorRoute::findCallback($callback);
+		
+		if (!$name) {
+			return '#DEAD';
+		}
+		
+		$route_hash = MoorRoute::hash($name, $params);
+				
+		if (isset(self::$hashes[$route_hash]) && !isset(self::$location_cache[$route_hash])) {
+			self::$location_cache[$route_hash] = self::$routes[self::$hashes[$route_hash]];
 		}
 			
-		$app = (isset($params['app'])) ? $params['app'] : MoorController::getApp();
-		$controller = isset($params['controller']) ? $params['controller'] : MoorController::getController();
-		$action = isset($params['action']) ? $params['action'] : MoorController::getAction();
+		if (!isset(self::$location_cache[$route_hash])) {
+			
+			$best_route_matches = array();
+			foreach(self::$routes as $route):
+				if ($route->name == $name) {
+					array_push($best_route_matches, $route);
+				}
+			endforeach;
+			
+			if (count($best_route_matches) == 1) {
+				$best_match = array_shift($best_route_matches);
+			}
+			
+			foreach ($best_route_matches as $route):			
+				$symbol_count = count($route->shorthand_symbols);
+				$param_count  = count($params);
+				
+				$intersect = count(array_intersect(
+					$route->shorthand_params, 
+					array_keys($params)
+				));
+				
+				$difference = ($symbol_count > $param_count) 
+					? $symbol_count - $param_count 
+					: $param_count - $symbol_count;
+					
+				$better_match = (
+					!isset($best_match) ||
+					$intersect >= $highest_intersect && 
+					$difference > $highest_difference ||
+					$intersect > $highest_intersect
+				);
+	
+				if ($better_match) {
+					$highest_intersect = $intersect;
+					$highest_difference = $difference;
+					$best_match = $route;
+				}
+			endforeach;	
+			
+			self::$location_cache[$route_hash] = $best_match;
+		}
 		
-		$params['app'] = $app;
-		$params['controller'] = $controller;
-		$params['action'] = $action;
+		$route  = self::$location_cache[$route_hash];
+		$params = array_diff_key($params, $route->overrides);
+		#$params = array_diff_key($params, MoorRoute::parseRoute)
 		
-		$names = array(
-			"MoorController__$app:$controller:$action",
-			"MoorController__$app:$controller:*",
-			"MoorController__$app:*:$action",
-			"MoorController__$app:*:*",
-			"MoorController__*:$controller:$action",
-			"MoorController__*:$controller:*",
-			"MoorController__*:*:$action",
-			"MoorController__*:*:*"
-		);
-		
-		foreach($names as $name) {
-			if ($url = self::linkToCallback($name, $params)) {
-				return $url;
+		$url = $route->shorthand;
+
+		foreach($route->shorthand_symbols as $key => $symbol) {
+			if (isset($params[$route->shorthand_params[$key]])) {
+				$url = str_replace($symbol, $params[$route->shorthand_params[$key]], $url);
+				unset($params[$route->shorthand_params[$key]]);
 			}
 		}
+	
+		if (!empty($params)) {
+			$url .= '?' . http_build_query($params);
+		}
+		
+		return $url;
 	}
 	
 	/**
@@ -383,10 +450,12 @@ class Moor {
 	{
 		header("HTTP/1.1 404 Not Found");
 		echo '<h1>NOT FOUND</h1>';
+		echo "\n\n";
 		
 		if (self::getOption('debug')) {
 			echo '<h2>Moor Debug</h2>';
-			echo join('<br />', Moor::getDebugMessages());
+			echo "\n\n";
+			echo join("\n", Moor::getDebugMessages());
 		}
 	}
 
@@ -407,75 +476,30 @@ class Moor {
 	 * @param string $action            The action param override
 	 * @return void
 	 */
-	public static function routeTo($definition, $app='*', $controller="*", $action="*") 
-	{
-		$name = "MoorController__$app:$controller:$action";
-	
-		$overrides = array();
-		if ($app != '*') { $overrides[self::$options['param_app']] = $app; }
-		if ($controller != '*') { $overrides[self::$options['param_controller']] = $controller; }
-		if ($action != '*') { $overrides[self::$options['param_action']] = $action; }
-	
-		$route = new MoorRoute(
-			self::$serial, $name, $definition, array('*' => __CLASS__.'::dispatchController'), $overrides
-		);
-	
-		self::$routes[$route->serial] = $route;
-		self::$names[$route->name]    = self::$serial;
-		self::$hashes[$route->hash]   = self::$serial;
-
-		self::$serial++;
-	}
-
-	/**
-	 * define a callback route
-	 *
-	 * === $definition ===
-	 *
-	 * can be a shorthand url string:
-	 *     '/users/:id/:slug'
-	 * 
-	 * or a regular expression using named parameters and # as the delimeter:
-	 *     '#/users/(?P<id>\d+)/(?P<slug>[a-z_]+)#'
-	 * 
-	 * === $callbacks ===
-	 * 
-	 * can be any thing that call_user_func would accept:
-	 *    'Email::send' OR array($obj_instance, 'process_xml')
-	 *  
-	 * or an array with HTTP METHODS:
-	 *    array(
-	 *      'GET' => 'User::read',
-	 *      'POST' => array($user, 'update')
-	 *    );
-	 *
-	 * @param string|regex $definition  A shorthand route definition or a full regular expression
-	 * @param string $name              The name of the route, also used as the callback when one is not defined
-	 * @param string|array $callbacks   The callback to execute when the definition is matched
-	 * @return void
-	 */
-	public static function routeToCallback($definition, $name, $callbacks=null) 
+	public static function routeTo($definition, $name, $callback=null) 
 	{
 		// just in case anyone gets too clever 
-		// with the name => callback override
+		// with the name/callback override
 		if (!is_string($name)) {
-			throw new MoorError(
+			throw new MoorProgrammerException(
 				'The name of your route must be a string.'
 			);
 		}
 		
-		if (is_null($callbacks)) {
-			$callbacks = $name;
+		if (is_null($callback)) {
+			$callback = $name;
 		}
 		
-		self::$routes[self::$serial] = new MoorRoute(
-			self::$serial, $name, $definition, $callbacks
+		$route = new MoorRoute(
+			self::$serial, $name, $definition, $callback
 		);
-		
-		self::$names[$name] = self::$serial;
+	
+		self::$routes[$route->serial] = $route;
+		self::$names[$route->name] = self::$serial;
+		self::$hashes[$route->hash] = self::$serial;
 		self::$serial++;
 	}
-
+	
 	/**
 	 * Run all define routes. Exits upon completion.
 	 *
@@ -483,7 +507,7 @@ class Moor {
 	 */
 	public static function run() 
 	{
-		self::addDebugMessage(__CLASS__, __FUNCTION__, 'Routing started');
+		//self::addDebugMessage(__CLASS__, __FUNCTION__, 'Routing started');
 		
 		// transact GET so any variables 
 		// we set can be rolled back.
@@ -491,46 +515,25 @@ class Moor {
 		$_GET = array();
 		
 		self::$request_path = preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']);
-		
-		self::addDebugMessage(__CLASS__, __FUNCTION__, 'REQUEST PATH set to ' . self::$request_path);
-		
-		$req_method = isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : 'GET';
 
 		foreach(self::$routes as $route):
 			// reset GET
 			$_GET = $old_GET;
 
-			if (!isset($route->callbacks['*']) && !isset($route->callbacks[$req_method])) {
-				continue;
-			}
-						
 			try {
 				if (!preg_match($route->expression, self::$request_path, $matches)) {
-					self::addDebugMessage(__CLASS__, __FUNCTION__, 'Continue: No Match for "' . $route->definition . '"');
 					continue;
 				}
 				
-				self::addDebugMessage(__CLASS__, __FUNCTION__, 'Matched ' . $route->definition);
-				
 				foreach($matches as $name => $param):
 					if (is_string($name)) {
-						self::addDebugMessage(__CLASS__, __FUNCTION__, "Extracting Param: \$_GET['{$name}'] = $param");
 						$_GET[$name] = $param;
 					}
 				endforeach;
-			
-				foreach($route->overrides as $name => $param) {
-					self::addDebugMessage(__CLASS__, __FUNCTION__, "Overriding Param: \$_GET['{$name}'] = $param");
-					$_GET[$name] = $param;
-				}
-
-				$callback = isset($route->callbacks[$req_method]) 
-					? $route->callbacks[$req_method] 
-					: $route->callbacks['*'];
-					
-				self::addDebugMessage(__CLASS__, __FUNCTION__, "Calling callback: {$callback}");
-					
-				call_user_func($callback); 
+				
+				$_GET = array_merge($_GET, $route->overrides);
+				
+				$route->dispatch();
 				exit();
 				
 			} catch (MoorContinueException $e) {
@@ -540,10 +543,33 @@ class Moor {
 			}
 		endforeach;
 		
-		self::addDebugMessage(__CLASS__, __FUNCTION__, "No More Routes. Calling 'callback_404'");
-			
 		call_user_func(self::$options['callback_404']);
 		exit();
+	}
+	
+	/**
+	 * undocumented 
+	 *
+	 */
+	public static function splitCallback($callback)
+	{
+		$split     = explode('\\', $callback);
+		$function  = array_pop($split);
+		$namespace = implode('\\', $split);
+
+		if (strpos($function, '::') !== FALSE) {
+			$split  = explode('::', $function);
+			$class  = $split[0];
+			$method = $split[1];
+			$function = NULL;
+		}
+		
+		return array(
+			'namespace' => $namespace,
+			'function' => $function,
+			'class' => $class,
+			'method' => $method
+		);
 	}
 	
 	/**
@@ -585,4 +611,4 @@ class Moor {
 
 class MoorNotFoundException extends Exception {}
 class MoorContinueException extends Exception {}
-class MoorError extends Exception {}
+class MoorProgrammerException extends Exception {}

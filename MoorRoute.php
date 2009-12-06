@@ -97,32 +97,181 @@ class MoorRoute {
 	 * @param string|array $callbacks   The callbacks to be executed upon a match
 	 * @param string $overrides         Any $_GET overrides to apply upon a match
 	 */
-	function __construct($serial, $name, $definition, $callbacks=null, $overrides=array()) {
+	function __construct($serial, $name, $definition, $callback, $overrides=array()) {
 		$this->serial = (int) $serial;
+		
 		$this->name = $name;
 		$this->definition = $definition;
-		$this->shorthand = self::createShortHandRouteExpression($definition);
 		$this->expression = self::createRouteExpression($definition);
+
+		$this->shorthand = self::createShortHandRouteExpression($definition);
 		$this->shorthand_params = self::parseParamsFromShorthand($this->shorthand);
 		$this->shorthand_symbols = self::createSymbolsFromParams($this->shorthand_params);	
 		$this->shorthand_params_flipped	= array_flip($this->shorthand_params);
 		$this->shorthand_symbols_flipped = array_flip($this->shorthand_symbols);
-		$this->callbacks = self::parseCallbacks($callbacks);
-		$this->overrides = $overrides;
+
+		$this->callback = $callback;
+		$this->callback_pieces = self::parseCallback($this->callback);
+		$this->overrides = self::parseOverrides($this->callback_pieces);
+		
+		print_r($this->overrides);
+		
 		$this->hash = "$name:" . join(':', array_merge(array_keys($this->shorthand_params), array_keys($this->overrides)));
 	}
 	
-	/**
-	 * Normalized a callback string/array
-	 *
-	 * @param string|array $callback 
-	 * @return array
-	 */
-	private static function parseCallbacks($callback)
+	function dispatch() {
+		$callback = $this->buildCallback();
+		print_r($callback . "\n\n");
+		
+		if (is_callable($callback)) {
+			call_user_func($callback);
+		} else {
+			print_r('NOT A VALID CALLBACK' . "\n\n");
+		}
+		
+		/*
+		$namespace = $route->callback['namespace'];
+		$class = $route->callback['class'];
+		$class = $namespace.'\\'.$class;
+		
+		$method = new ReflectionMethod($class, $route->callback['method']); 
+		if (!$method->isPublic()) {
+			continue;
+		}
+		
+		if (is_subclass_of($namespace.'\\'.$class, 'MoorController')) {
+			$class = $namespace.'\\'.$class;
+			
+			if (!$method->isStatic()) {
+				new $class($route->callback['method']);
+			}
+		}
+		*/
+	}
+	
+	private static function parseOverrides($callback_pieces)
 	{
-		if (!is_array($callback) || is_array($callback) && (isset($callback[0]) && is_object($callback[0]))) {
-			return array('*' => $callback);
-		} 
+		$overrides = array();
+
+		foreach($callback_pieces as $name => $val) {
+			if ($val && $val != '*') {
+				$overrides[$name] = $val;
+			}
+		}
+
+		return $overrides;
+	}
+	
+	public static function findCallback($callback_search)
+	{			
+		$key = __FUNCTION__ . "/$callback_search";
+		
+		if (isset(Moor::$cache[$key])) {
+			return Moor::$cache[$key];
+		}
+		
+		extract(self::parseCallback($callback_search));
+		
+		if ($namespace && $class && $method) {
+			$names = array(
+				"{$namespace}\\{$class}::{$method}",
+				"{$namespace}\\{$class}::*",
+				"{$namespace}\\*::{$method}",
+				"{$namespace}\\*::*",
+				"*\\{$class}::{$method}",
+				"*\\{$class}::*",
+				"*\\*::{$method}",
+				"*\\*::*"
+			);
+		} else if ($namespace && $function) {
+			$names = array(
+				"{$namespace}\\{$function}",
+				"{$namespace}\\*",
+				"*\\{$function}",
+				"*\\*"
+			);
+		} else if (!$namespace && $class && $method) {
+			$names = array(
+				"{$class}::{$method}",
+				"\\{$class}::{$method}",
+				"{$class}::*",
+				"\\{$class}::*",
+				"*::{$method}",
+				"\\*::{$method}",
+				"*::*",
+				"\\*::*"
+			);
+		} else if (!$namespace && $function) {
+			$names = array(
+				"{$function}",
+				"\\{$function}",
+				"*",
+				"\\*"
+			);
+		}
+
+		foreach ($names as $name) {
+			if (isset(Moor::$names[$name])) {
+				return Moor::$cache[$key] = $name;
+			}				
+        }
+	}
+	
+	public static function parseCallback($callback)
+	{
+		if (strpos($callback, "\\") === 0) {
+			$callback = substr($callback, 1);
+		}
+		
+		$split = explode("\\", $callback);
+		$function  = array_pop($split);
+		$namespace = implode("\\", $split);
+
+		if (strpos($function, '::') !== FALSE) {
+			$split  = explode('::', $function);
+			$class  = $split[0];
+			$method = $split[1];
+			$function = NULL;
+		}
+		
+		echo $namespace . "\n\n";
+		
+		return array(
+			'namespace' => $namespace,
+			'function'  => $function,
+			'class'     => $class,
+			'method'    => $method
+		);
+
+	}
+	
+	function buildCallback() {
+		extract($this->callback_pieces);
+		
+		if ($namespace == '*' && isset($_GET['namespace'])) {
+			$namespace = Moor::camelize($_GET['namespace'], TRUE);
+		}
+		if ($function == '*' && isset($_GET['function'])) {
+			$function = Moor::underscorize($_GET['function']);
+		}
+		if ($class == '*' && isset($_GET['class'])) {
+			$class = Moor::camelize($_GET['class'], TRUE);
+		}
+		if ($method == '*' && isset($_GET['method'])) {
+			$method = Moor::camelize($_GET['method']);
+		}
+		
+		$callback = '';
+
+		if ($namespace) {
+			$callback .= $namespace.'\\';
+		}
+		if ($function) {
+			$callback .= $function;
+		} else if ($method) {
+			$callback .= $class . '::' . $method;
+		}
+		
 		return $callback;
 	}
 	
@@ -132,7 +281,7 @@ class MoorRoute {
 	 * @param array $params  An array of params names
 	 * @return array         An array of symbols
 	 */
-	private static function createSymbolsFromParams($params) 
+	private static function createSymbolsFromParams($params)
 	{
 		return array_map(__CLASS__.'::createSymbolsFromParamsCallback', $params);
 	}
