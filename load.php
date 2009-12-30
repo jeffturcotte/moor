@@ -2,7 +2,7 @@
 // Moor Loader
 
 include dirname(__FILE__).'/Moor.php';
-include dirname(__FILE__).'/MoorRoute.php';
+include dirname(__FILE__).'/MoorAbstractController.php';
 include dirname(__FILE__).'/MoorController.php';
 
 if (!function_exists('link_to')) {

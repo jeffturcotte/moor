@@ -10,11 +10,7 @@
  *
  * @version    1.0.0b
  */
-class MoorController {
-	static $__app = null;
-	static $__controller = null;
-	static $__action = null;
-
+class MoorController extends MoorAbstractController {
 	protected function __before() {}
 	protected function __after() {}
 	
@@ -25,19 +21,6 @@ class MoorController {
 	 */
 	public function __construct($action_method) 
 	{	
-		self::$__app = $_GET[Moor::getOption('param_app')];
-		self::$__controller = $_GET[Moor::getOption('param_controller')];
-		self::$__action = $_GET[Moor::getOption('param_action')];
-
-		if (Moor::getOption('pollute')) {
-			define('__APP__', self::getApp());
-			define('__CONTROLLER__', self::getController());
-			define('__ACTION__', self::getAction());
-			define('__APP_PATH__', self::getAppPath());
-			define('__CONTROLLER_PATH__', self::getControllerPath());
-			define('__ACTION_PATH__', self::getActionPath());
-		}
-
 		$this->__before();
 		
 		try {
@@ -66,29 +49,4 @@ class MoorController {
 	    
 	    exit();
 	}
-	
-	public static function getApp() {
-		return self::$__app;
-	}
-	
-	public static function getController() {
-		return self::$__controller;
-	}
-	
-	public static function getAction() {
-		return self::$__action;
-	}
-	
-	public static function getAppPath() {
-		return DIRECTORY_SEPARATOR . self::$__app;
-	}
-	
-	public static function getControllerPath() {
-		return self::getAppPath() . DIRECTORY_SEPARATOR . self::$__controller;
-	}
-	
-	public static function getActionPath() {
-		return self::getControllerPath() . DIRECTORY_SEPARATOR . self::$__action;
-	}
-
 }
