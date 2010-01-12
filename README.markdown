@@ -76,9 +76,9 @@ http://www.regular-expressions.info/named.html
 ## Hello "BUT I NEED TO MATCH A SPECIFIC PATTERN!!!"
 
 	<?php 
-	// Use a regex with named groups. ** You must delimit regex with #'s!! **
+	// Use a regex with named groups. ** start a regex with 'preg:' **
 
-	Moor::route('#^/hello/(?P<name>[A-Z]+)$#', 'hello_specific');
+	Moor::route('preg:#^/hello/(?P<name>[A-Z]+)$#', 'hello_specific');
 	
 	function hello_specific() {
 		echo 'Hello ' . $_GET['name'] . ', welcome to the capitals club.';
