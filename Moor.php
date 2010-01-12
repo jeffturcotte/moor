@@ -4,7 +4,7 @@
  *
  * @copyright  Copyright (c) 2010 Jeff Turcotte
  * @author     Jeff Turcotte [jt] <jeff.turcotte@gmail.com>
- * @license    MIT (see LICENSE)
+ * @license    MIT (see LICENSE or bottom of this file)
  * @package    Moor
  * @link       http://github.com/jeffturcotte/moor
  *
@@ -17,42 +17,49 @@ class Moor {
 	 *
 	 * @var boolean
 	 **/
-	public static $debug = TRUE;
+	private static $debug = FALSE;
+	
+	/**
+	 * Whether or not safe mode is enabled.
+	 *
+	 * @var string
+	 **/
+	private static $safe = TRUE;
 	
 	/**
 	 * Debug messages
 	 *
 	 * @var array
 	 **/
-	public static $messages = array();
+	private static $messages = array();
 
 	/**
 	 * The 404 callback to run upon no route matches
 	 *
 	 * @var string
 	 **/
-	public static $not_found_callback = 'Moor::routeNotFoundCallback';
+	private static $not_found_callback = 'Moor::routeNotFoundCallback';
 
 	/**
 	 * The name of the namespace GET param. Will replace @namespace in shorthand URLs
 	 *
 	 * @var string
 	 **/
-	public static $namespace_param_name = '_MOOR_NAMESPACE';
+	private static $namespace_param_name = '_MOOR_NAMESPACE';
 
 	/**
 	 * The name of the class GET param. Will replace @class to shorthand URLs
 	 *
 	 * @var string
 	 **/
-	public static $class_param_name = '_MOOR_CLASS';
+	private static $class_param_name = '_MOOR_CLASS';
 	
 	/**
 	 * The name of the function GET param. Will replace @function to shorthand URLs
 	 *
 	 * @var string
 	 **/
-	public static $function_param_name = '_MOOR_FUNCTION';
+	private static $function_param_name = '_MOOR_FUNCTION';
 
 	/**
 	 * Internal cache
@@ -75,6 +82,10 @@ class Moor {
 	 **/
 	private static $routes_by_callback = array();
 
+	// ==============
+	// = Public API =
+	// ==============
+
 	/**
 	 * Find the URL where a particular callback lives
 	 *
@@ -82,7 +93,7 @@ class Moor {
 	 * @param  string $params          The GET params to send
 	 * @return string The URL
 	 */
-	public function locate($callback_string, $params=array()) {		
+	public static function linkTo($callback_string, $params=array()) {		
 	
 		$key = __FUNCTION__ . '/' . $callback_string . '/' . implode('/', array_keys($params));
 
@@ -156,7 +167,12 @@ class Moor {
 	 * @param  string $function        An optional anonymous function to override the callback
 	 * @return void
 	 */
-	public function route($url_string, $callback_string, $function=NULL) {
+	public static function route($url_string, $callback_string, $function=NULL) {
+		if (self::$safe && in_array($callback_string, array('*', '*\\*', '\\*'))) {
+			self::addMessage(__METHOD__, '(SAFE MODE) Disallowing route with dangerous callback: ' . $callback_string);
+			self::triggerContinue();
+		}
+		
 		$route = (object) 'route';
 		$route->url = self::parseUrl($url_string);
 		$route->callback = self::parseCallback($callback_string);
@@ -171,7 +187,7 @@ class Moor {
 	 *
 	 * @return void
 	 */
-	public function run() {
+	public static function run() {
 		$old_GET = $_GET;
 		$_GET = array();
 		
@@ -193,63 +209,8 @@ class Moor {
 				
 				$callback =& self::parseCallback(self::buildCallback($route->callback));
 	
-				if ($callback->namespace == '*' || $callback->class == '*' || $callback->function == '*') {
-					self::addMessage(__METHOD__, 'Skip: Generated callback is missing pieces');
-					continue;
-				}
-				
-				if ($callback->class) {
-					
-					if (!class_exists($callback->callable_class)) {
-						self::addMessage(
-							__METHOD__,
-							'Skip: class ' . $callback->callable_class . ' does not exist'
-						);
-						continue;
-					}
-					
-					if (!is_subclass_of($callback->callable_class, 'MoorAbstractController')) {
-						self::addMessage(
-							__METHOD__, 
-							'Skip: class ' . $callback->callable_class . ' does not extend a MoorController class'
-						);
-						continue;
-					}
-
-					if (strpos($callback->function, '__') === 0) {
-						self::addMessage(__METHOD__, 'Skip: method ' . $callback->function . ' looks like a magic method.');
-						continue;
-					}
-
-					if (!in_array($callback->function, get_class_methods($callback->callable_class))) {
-						self::addMessage(__METHOD__, 'Skip: method ' . $callback->function . ' is not publicly accessible.');
-						continue;
-					}
-					
-					// define our friendly neighborhood constants
-					define('MOOR_NAMESPACE', $callback->namespace);
-					define('MOOR_CLASS', $callback->callable_class);
-					define('MOOR_FUNCTION', $callback->function);
-					define('MOOR_METHOD', $callback->scalar);					
-					define('MOOR_PATH', self::toPath(MOOR_METHOD));
-					
-					new $callback->callable_class($callback->function);
-					exit();
-				} 
-				
-				if ($callback->function) {
-					if (!is_callable($callback->callable_function)) {
-						self::addMessage(__METHOD__, 'Skip: function ' . $callback->callable_function . ' is not callable.');
-						continue;
-					}
-					
-					define('MOOR_NAMESPACE', $callback->namespace);
-					define('MOOR_FUNCTION', $callback->scalar);
-					define('MOOR_PATH', self::toPath(MOOR_FUNCTION));
-					
-					call_user_func($callback->function);
-					exit;
-				}
+				self::validateCallback($callback);
+				self::dispatchCallback($callback);
 			
 			} catch (MoorContinueException $e) {
 				continue;
@@ -262,10 +223,89 @@ class Moor {
 		exit();
 	}
 	
-	private static function addMessage($method, $message) 
+	/**
+	 * Return whether debugging is enabled or not
+	 *
+	 * @return boolean 
+	 */
+	public static function getDebug()
+	{
+		return self::$debug;
+	}
+	
+	/**
+	 * Return all debug messages set up to this point
+	 *
+	 * @return array
+	 **/
+	public static function getMessages()
+	{
+		return self::$messages;
+	}
+	
+	/**
+	 * Enable or disable the debugging
+	 *
+	 * @return void
+	 **/
+	public static function setDebug($bool=TRUE)
+	{
+		self::$debug = (boolean) $bool;
+	}
+	
+	/**
+	 * Set the callback for when a route is not found.
+	 *
+	 * @return void
+	 **/
+	public static function setNotFoundCallback($callback)
+	{
+		self::$not_found_callback = $callback;
+	}
+	
+	/**
+	 * Add a debug messages to the messages stack
+	 *
+	 * @param string $method The method adding the message
+	 * @param string $message The debug message
+	 * @return void
+	 */
+	public static function addMessage($method, $message) 
 	{
 		array_push(self::$messages, $message);
 	}
+	
+	/**
+	 * Convert a callback string to a filepath
+	 *
+	 * Best used to map files to particular callbacks
+	 *
+	 * @param  string $callback_string The callback
+	 * @return string The relative filepath
+	 */
+	public static function toPath($callback_string) {
+		$callback = self::parseCallback($callback_string);
+		
+		$path = sprintf('/%s/%s/%s', 
+			$callback->underscore_namespace, 
+			$callback->underscore_class,
+			$callback->underscore_function
+		);
+		
+		return '/' . trim($path, '/');
+	}
+	
+	public static function triggerContinue() {
+		throw new MoorContinueException();
+	}
+	
+	public static function triggerNotFound() {
+		throw new NotFoundException();
+	}
+	
+	// =========================
+	// = Private/Protected API =
+	// =========================
 	
 	/**
 	 * Converts an `underscore_notation` or `camelCase` string to `camelCase`
@@ -325,7 +365,9 @@ class Moor {
 		$url->regex = $url_string;
 		$url->shorthand = $url_string;
 
-		if ($url->scalar[0] == '#'):	
+		if (strpos($url->scalar, 'preg:') === 0):	
+
+			$url->regex = substr($url->regex, 4);
 
 			# pattern for matching regex named groups
 			#  \(\?P ...................... start group
@@ -334,7 +376,7 @@ class Moor {
 			#  \) ......................... end group
 		
 			$named_group_pattern = "#\(\?P \<([A-Z0-9a-z_-]+)\> ((?:[^()]|\((?2)\))*+) \)#x";
-			$shorthand = substr($url, 1, -1);
+			$shorthand = substr($url->regex, 1, -1);
 			$shorthand = preg_replace($named_group_pattern, ':\1', $shorthand);
 			$shorthand = ltrim($shorthand, '^');
 			$shorthand = rtrim($shorthand, '$');
@@ -375,24 +417,24 @@ class Moor {
 		$callback->overrides = array();
 		
 		preg_match('/^((?P<namespace>.+)\\\\)?((?P<class>.+)::)?(?P<function>.+)$/', $callback_string, $matches);
-		$callback->namespace = ($matches['namespace']) ? $matches['namespace'] : NULL;
-		$callback->class     = ($matches['class']) ? $matches['class'] : NULL;
-		$callback->function  = ($matches['function']) ? $matches['function'] : NULL;
-		
-		if ($callback->namespace != '*' && $callback->namespace !== NULL) {
-			$callback->overrides[self::$namespace_param_name] = self::underscorize($callback->namespace);
-		}
-		if ($callback->class != '*' && $callback->class !== NULL) {
-			$callback->overrides[self::$class_param_name] = self::underscorize($callback->class);
-		}
-		if ($callback->function != '*' && $callback->function !== NULL) {
-			$callback->overrides[self::$function_param_name] = self::underscorize($callback->function);
-		}
+		$callback->namespace = ($matches['namespace']) ? self::camelize($matches['namespace'], TRUE) : NULL;
+		$callback->class     = ($matches['class']) ? self::camelize($matches['class'], TRUE) : NULL;
+		$callback->function  = ($matches['function']) ? self::camelize($matches['function']) : NULL;
 		
 		$callback->underscore_namespace = ($callback->namespace) ? self::underscorize($callback->namespace) : NULL;
 		$callback->underscore_class     = ($callback->class) ? self::underscorize($callback->class) : NULL;
 		$callback->underscore_function  = ($callback->function) ? self::underscorize($callback->function) : NULL;
-			
+	
+		if ($callback->namespace != '*' && $callback->namespace !== NULL) {
+			$callback->overrides[self::$namespace_param_name] = $callback->underscore_namespace;
+		}
+		if ($callback->class != '*' && $callback->class !== NULL) {
+			$callback->overrides[self::$class_param_name] = $callback->underscore_class;
+		}
+		if ($callback->function != '*' && $callback->function !== NULL) {
+			$callback->overrides[self::$function_param_name] = $callback->underscore_function;
+		}
+	
 		$callback->callable_class = ($callback->namespace) 
 			? $callback->namespace . self::getNamespaceSeparator() . $callback->class
 			: $callback->class;
@@ -409,27 +451,7 @@ class Moor {
 		
 		return self::$cache[__FUNCTION__.$callback_string] =& $callback;
 	}
-	
-	/**
-	 * Convert a callback string to a filepath
-	 *
-	 * Best used to map files to particular callbacks
-	 *
-	 * @param  string $callback_string The callback
-	 * @return string The relative filepath
-	 */
-	public static function toPath($callback_string) {
-		$callback = self::parseCallback($callback_string);
-		
-		$path = sprintf('/%s/%s/%s', 
-			$callback->underscore_namespace, 
-			$callback->underscore_class,
-			$callback->underscore_function
-		);
-		
-		return '/' . trim($path, '/');
-	}
-	
+
 	/**
 	 * Get the namespace separator for the php version being used
 	 *
@@ -608,7 +630,103 @@ class Moor {
 		
 		return self::$cache[$key] =& $string;
 	}
+	
+	/**
+	 * Dispatch a callback
+	 *
+	 * 
+	 * @return void
+	 **/
+	private static function dispatchCallback($callback)
+	{
+		if ($callback->class) {
+			// define our friendly neighborhood constants
+			define('MOOR_NAMESPACE', $callback->namespace);
+			define('MOOR_CLASS', $callback->callable_class);
+			define('MOOR_FUNCTION', $callback->function);
+			define('MOOR_METHOD', $callback->scalar);
+			define('MOOR_PATH', self::toPath(MOOR_METHOD));
+			new $callback->callable_class($callback->function);
+			exit();
+		} 
+
+		if ($callback->function) {
+			define('MOOR_NAMESPACE', $callback->namespace);
+			define('MOOR_FUNCTION', $callback->scalar);
+			define('MOOR_PATH', self::toPath(MOOR_FUNCTION));
+			call_user_func($callback->callable_function);
+			exit;
+		}
+	}
+	
+	/**
+	 * Validates a callback for dispatch
+	 *
+	 * @param object $callback A callback object
+	 * @return void
+	 **/
+	private static function validateCallback($callback)
+	{
+		// disallow unsafe callbacks
+		
+		if ($callback->namespace == '*' || $callback->class == '*' || $callback->function == '*') {
+			self::addMessage(__METHOD__, 'Skipped route. Callback is missing the GET params for wildcard replacement.');
+			self::triggerContinue();
+		}
+		
+		if ($callback->class) {
+			
+			if (!class_exists($callback->callable_class)) {
+				self::addMessage(__METHOD__, 'Skipped route. Class ' . $callback->callable_class . ' does not exist');
+				self::triggerContinue();
+			}
+			
+			if (strpos($callback->function, '__') === 0) {
+				self::addMessage(__METHOD__, 'Skipped route. Method ' . $callback->function . ' looks like a magic method.');
+				self::triggerContinue();
+			}
+			
+			$method = new ReflectionMethod($callback->callable_class, $callback->function);
+			$method_is_public = $method->isPublic();
+			$method_is_static = $method->isStatic();
+			
+			if (!is_subclass_of($callback->callable_class, 'MoorAbstractController')) {
+				self::addMessage(__METHOD__, 'Skipped route. Class ' . $callback->callable_class . ' doesn\'t extend MoorAbstractController.');
+				self::triggerContinue();
+			}
+			
+			if ($method->isStatic()) {
+				self::addMessage(__METHOD__, 'Skipped route. Method ' . $callback->function . ' is static.');
+				self::triggerContinue();
+			}
+			
+			if (!$method->isPublic()) {
+				self::addMessage(__METHOD__, 'Skipped route. Method ' . $callback->function . ' is not publicly accessible.');
+				self::triggerContinue();
+			}
+			
+		} else if ($callback->function) {
+
+			if (!is_callable($callback->callable_function)) {
+				self::addMessage(__METHOD__, 'Skip: function ' . $callback->callable_function . ' is not callable.');
+				self::triggerContinue();
+			}
+		}
+	}
 }
+
+// =============
+// = Exception =
+// =============
+
+class MoorException extends Exception {}
+class MoorContinueException extends MoorException {}
+class MoorNotFoundException extends MoorException {}
+
+
+// ===============================
+// = Built-In Controller Classes =
+// ===============================
 
 /**
  * Abstract Controller
@@ -640,23 +758,73 @@ class MoorActionController extends MoorAbstractController {
 		    while($exception) {
     		    // pass exceptions to a __catch_ExceptionClass method 
     		    $magic_exception_catcher = "__catch_" . $exception->getName();
-                if (is_callable(array($this, $magic_exception_catcher))) {
-                    call_user_func_array(array($this, $magic_exception_catcher), array($e));
-                    break;
-                }
-                $exception = $exception->getParentClass();
-            }
-            
-            if (!$exception) {
+				if (is_callable(array($this, $magic_exception_catcher))) {
+					call_user_func_array(array($this, $magic_exception_catcher), array($e));
+					break;
+				}
+				$exception = $exception->getParentClass();
+			}
+			
+ 			if (!$exception) {
                 throw $e;
             }
 		}
-	
-	    $this->__after();
-	    
-	    exit();
+		
+		$this->__after();
+		exit();
 	}
 	
 	protected function __before() {}
 	protected function __after() {}
 }
+
+// ====================
+// = Helper Functions =
+// ====================
+
+if (!function_exists('link_to')) {
+	function link_to($callback_string, $params) {
+		return Moor::linkTo($callback_string, $params);
+	}
+}
+
+if (!function_exists('route')) {
+	function route($url, $callback_string, $function=null) {
+		return Moor::route($url, $callback_string, $function);
+	}
+}
+
+if (!function_exists('run')) {
+	function run() {
+		return Moor::run();
+	}
+}
+
+// ===========
+// = License =
+// ===========
+
+// Moor - a routing and controller library for PHP5
+// 
+// Copyright (c) 2010 Jeff Turcotte
+// 
+// Permission is hereby granted, free of charge, to any person
+// obtaining a copy of this software and associated documentation
+// files (the "Software"), to deal in the Software without
+// restriction, including without limitation the rights to use,
+// copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following
+// conditions:
+// 
+// The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+// OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+// HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
