@@ -36,7 +36,6 @@ class MoorActionController extends MoorAbstractController  {
 		}
 		
 		$this->_after();
-
 		exit();
 	}
 	
@@ -48,7 +47,7 @@ class MoorActionController extends MoorAbstractController  {
 // = License =
 // ===========
 
-// Moor - a routing and controller library for PHP5
+// Moor - a routing, linking and controller library for PHP5
 // 
 // Copyright (c) 2010 Jeff Turcotte
 // 
