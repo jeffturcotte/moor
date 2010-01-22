@@ -15,9 +15,10 @@ class MoorAbstractController {
 	/**
 	 * Create an instance to encapsulate all controller logic
 	 *
-	 * @param object $method  A ReflectionMethod object of the method being run. 
+	 * @return void
 	 */
-	public function __construct($method) {
+	public function __construct() {
+		$method = new ReflectionMethod(Moor::getCallback());
 		$this->{$method->getName()}();
 	}
 }

@@ -11,11 +11,18 @@
  */
 class Moor {
 	/**
-	 * The currently running "method" callback, not used for functions/closures
+	 * The currently running callback
 	 *
-	 * @var object ReflectionMethod
+	 * @var string
 	 */
-	private static $active_method = NULL;
+	private static $active_callback = NULL;
+	
+	/**
+	 * The current path mapping for the active callback
+	 *
+	 * @var string
+	 */
+	private static $active_path = NULL;
 
 	/**
 	 * Internal cache
@@ -99,6 +106,18 @@ class Moor {
 	// ==============
 
 	/**
+	 * Add a debug messages to the messages stack
+	 *
+	 * @param string $method The method adding the message
+	 * @param string $message The debug message
+	 * @return void
+	 */
+	public static function addMessage($method, $message) 
+	{
+		array_push(self::$messages, $message);
+	}
+
+	/**
 	 * Find the URL where a particular callback lives
 	 *
 	 * @param  string $callback_string The callback to search for
@@ -116,8 +135,13 @@ class Moor {
 		$callback_string = array_shift($param_values);
 		$callback_string = trim($callback_string);
 
-		if (strpos($callback_string, '::') == 0 && self::$active_method) {
-			$callback_string = self::$active_method->getDeclaringClass()->getName() . $callback_string;
+		if (strpos($callback_string, '::') == 0 && self::$active_callback) {
+			try {
+				$rm = new ReflectionMethod(self::$active_callback);
+				$callback_string = $rm->getDeclaringClass()->getName() . $callback_string;
+			} catch (ReflectionException $e) {
+				return '#';
+			}
 		}
 
 		if (!isset(self::$cache_for_linkTo[$key])) {
@@ -226,8 +250,70 @@ class Moor {
 		if (!empty($excluded_params)) { 
 			$url .= '?' . http_build_query($excluded_params); 
 		}
-
+		
 		return $url;
+	}
+
+	/**
+	 * Returns the callback string for the currently running route
+	 *
+	 * @return string
+	 */
+	public static function getCallback()
+	{
+		return self::$active_callback;
+	}
+
+	/**
+	 * Return whether debugging is enabled or not
+	 *
+	 * @return boolean 
+	 */
+	public static function getDebug()
+	{
+		return self::$debug;
+	}
+
+	/**
+	 * Return all debug messages set up to this point
+	 *
+	 * @return array
+	 **/
+	public static function getMessages()
+	{
+		return self::$messages;
+	}
+
+	/**
+	 * Returns the path for the currently running route
+	 *
+	 * @return string
+	 */
+	public static function getPath()
+	{
+		return self::$active_path;
+	}
+
+	/**
+	 * Makes a path out of a callback string.
+	 *
+	 * @param string $callback_string 
+	 * @return string  The path created from the callback
+	 */
+	public static function makePath($callback_string)
+	{
+		$ds = DIRECTORY_SEPARATOR;
+		
+		$string = str_replace('::', $ds, $callback_string);
+		$string = str_replace('\\', $ds, $string);
+		$string = preg_replace('/_([A-Z])/', $ds.'$1', $string);
+
+		$pieces = explode($ds, $string);
+		foreach($pieces as $n => $piece) {
+			$pieces[$n] = self::underscorize($piece);
+		}
+		
+		return $ds . join($ds, $pieces);
 	}
 
 	/**
@@ -248,7 +334,7 @@ class Moor {
 		
 		if ($callback_string instanceof Closure) {
 			$function = $callback_string;
-			$callback_string = uniqid();
+			$callback_string = '';
 		}
 
 		$route = (object) 'uncompiled_route';
@@ -278,6 +364,9 @@ class Moor {
 		$request_path = preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']);
 
 		foreach(self::$routes as $route):
+			self::$active_callback = NULL;
+			self::$active_path = NULL;
+		
 			$_GET = $old_GET;
 
 			try {
@@ -295,38 +384,16 @@ class Moor {
 				exit();
 
 			} catch (MoorContinueException $e) {
-				self::$active_method = NULL;
 				continue;
 			} catch (MoorNotFoundException $e) {
-				self::$active_method = NULL;
 				break;
 			}
 		endforeach;
 
 		self::addMessage(__METHOD__, 'No Matches Found. Running Not Found callback: ' . self::$not_found_callback);
-
+		
 		call_user_func(self::$not_found_callback);
 		exit();
-	}
-
-	/**
-	 * Return whether debugging is enabled or not
-	 *
-	 * @return boolean 
-	 */
-	public static function getDebug()
-	{
-		return self::$debug;
-	}
-
-	/**
-	 * Return all debug messages set up to this point
-	 *
-	 * @return array
-	 **/
-	public static function getMessages()
-	{
-		return self::$messages;
 	}
 
 	/**
@@ -340,6 +407,28 @@ class Moor {
 	}
 
 	/**
+	 * Sets the pattern that will match a URL request param if no pattern is given
+	 *
+	 * @param string $pattern  The regular expression to match a request param in the URL
+	 * @return void
+	 **/
+	public static function setDefaultRequestParamPattern($pattern)
+	{
+		self::$default_param_pattern = $pattern;
+	}
+
+	/**
+	 * Sets the response from linkTo if a valid match can't be found
+	 *
+	 * @param string $response  The string to return a link isn't found
+	 * @return void
+	 **/
+	public function setLinkNotFoundResponse($response)
+	{
+		self::$link_not_found_response = $response;
+	}
+	
+	/**
 	 * Set the callback for when a route is not found.
 	 *
 	 * @return void
@@ -350,21 +439,19 @@ class Moor {
 	}
 
 	/**
-	 * Add a debug messages to the messages stack
+	 * Triggers skipping the current route and moving to the next one.
 	 *
-	 * @param string $method The method adding the message
-	 * @param string $message The debug message
 	 * @return void
 	 */
-	public static function addMessage($method, $message) 
-	{
-		array_push(self::$messages, $message);
-	}
-
 	public static function triggerContinue() {
 		throw new MoorContinueException();
 	}
 	
+	/**
+	 * Triggers the not found callback when the router is running.
+	 *
+	 * @return void
+	 */
 	public static function triggerNotFound() {
 		throw new NotFoundException();
 	}
@@ -464,6 +551,9 @@ class Moor {
 
 		$callback_string = self::injectParamsIntoCallback($route->callback);
 
+		self::$active_callback = $callback_string;
+		self::$active_path = self::makePath($callback_string);
+
 		try {
 			// attempt to run a method callback
 			$method = new ReflectionMethod($callback_string);
@@ -491,17 +581,18 @@ class Moor {
 			}
 
 			// set currently running Method
-			self::$active_method = $method;
 			$class_name = $class->getName();
-			new $class_name($method);
+			new $class_name($callback_string);
 			exit();
 		} catch (ReflectionException $e) {}
 
 		try {
+
 			// attempt to run a function callback
 			$function = new ReflectionFunction($callback_string);
 			call_user_func($function->getName());
 			exit();
+
 		} catch (ReflectionException $e) {}
 
 		self::addMessage(__METHOD__, 'Skipping callback: ' . $callback_string . '. Not a valid method or function.');
@@ -731,7 +822,8 @@ class Moor {
 		}
 
 		foreach($url->request_params as $param) {
-			$url->pattern = str_replace($param->search, $param->replacement, $url->pattern);
+			$url->pattern   = str_replace($param->search, $param->replacement, $url->pattern);
+			$url->shorthand = str_replace($param->search, ':'.$param->name, $url->shorthand);
 		}
 
 		$url->pattern = ($match_start ? '#^' : '#') . $url->pattern;
@@ -756,7 +848,7 @@ class Moor {
 			echo join("<br />\n", self::$messages);
 		}
 	}
-
+	
 	/**
 	 * Converts a `camelCase` or `underscore_notation` string to `underscore_notation`
 	 *

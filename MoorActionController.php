@@ -10,7 +10,14 @@
  * @version    1.0.0b3
  */
 class MoorActionController extends MoorAbstractController  {
-	final public function __construct($method) {
+	/**
+	 * Create an instance to encapsulate all controller logic
+	 *
+	 * @return void
+	 */
+	final public function __construct() {
+		$method = new ReflectionMethod(Moor::getCallback());
+		
 		$this->_before();
 		
 		try {
@@ -22,7 +29,7 @@ class MoorActionController extends MoorAbstractController  {
 
 		    while($exception) {
     		    // pass exceptions to a __catch_ExceptionClass method 
-    		    $magic_exception_catcher = "_catch_" . $exception->getName();
+    		    $magic_exception_catcher = "_catch" . $exception->getName();
 				if (is_callable(array($this, $magic_exception_catcher))) {
 					call_user_func_array(array($this, $magic_exception_catcher), array($e));
 					break;
@@ -36,7 +43,6 @@ class MoorActionController extends MoorAbstractController  {
 		}
 		
 		$this->_after();
-		exit();
 	}
 	
 	protected function _before() {}
