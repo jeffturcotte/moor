@@ -1,13 +1,13 @@
 <?php
 /**
- * Moor is a routing and controller library for PHP5
+ * Moor is a URL Routing/Linking/Controller library for PHP 5
  *
  * @copyright  Copyright (c) 2010 Jeff Turcotte
  * @author     Jeff Turcotte [jt] <jeff.turcotte@gmail.com>
  * @license    MIT (see LICENSE or bottom of this file)
  * @package    Moor
  * @link       http://github.com/jeffturcotte/moor
- * @version    1.0.0b3
+ * @version    1.0.0b4
  */
 class Moor {
 	/**
@@ -18,32 +18,67 @@ class Moor {
 	private static $active_callback = NULL;
 	
 	/**
-	 * The current path mapping for the active callback
+	 * The currently running namespace
 	 *
 	 * @var string
 	 */
-	private static $active_path = NULL;
+	private static $active_namespace = NULL;
 
 	/**
-	 * Internal cache
+	 * The currently running class (w/ namespace)
+	 *
+	 * @var string
+	 */
+	private static $active_class = NULL;
+
+	/**
+	 * The currently running class (w/o namespace)
+	 *
+	 * @var string
+	 */
+	private static $active_short_class = NULL;
+
+	/**
+	 * The currently running method (w/ namespace & class)
+	 *
+	 * @var string
+	 */
+	private static $active_method = NULL;
+	
+	/**
+	 * The currently running method (w/o namespace or class)
+	 *
+	 * @var string
+	 */
+	private static $active_short_method = NULL;
+	
+	/**
+	 * The currently running function
+	 *
+	 * @var string
+	 */
+	private static $active_function = NULL;
+
+	/**
+	 * Internal cache object
 	 *
 	 * @var array
 	 **/
-	private static $cache = array();
+	private static $cache = NULL;
 
 	/**
-	 * Internal cache for LinkTo 
+	 * Id for cache, defaults to HTTP_HOST
 	 *
-	 * @var array
-	 */
-	private static $cache_for_linkTo = array();
+	 * @var string
+	 **/
+	private static $cache_key = NULL;
 
 	/**
 	 * Default pattern to match :id params in incoming urls
 	 *
 	 * @var string
 	 */
-	private static $default_param_pattern = '[A-Za-z0-9_]+';
+	private static $default_request_param_pattern = '[A-Za-z0-9_]+';
 
 	/**
 	 * Whether or not to show debug messages on default 404 page
@@ -53,18 +88,18 @@ class Moor {
 	private static $debug = FALSE;
 
 	/**
+	 * Wether or not to cache with APC
+	 *
+	 * @var boolean
+	 **/
+	private static $enable_cache = FALSE;
+	
+	/**
 	 * The current more instance, only used for chaining
 	 *
 	 * @var object Moor
 	 */ 
 	private static $instance = NULL;
-
-	/**
-	 * Default linkTo response for when a link can't be found
-	 *
-	 * @var string
-	 **/
-	private static $link_not_found_response = '#';
 
 	/**
 	 * Debug messages
@@ -79,6 +114,13 @@ class Moor {
 	 * @var string
 	 **/
 	private static $not_found_callback = 'Moor::routeNotFoundCallback';
+
+	/**
+	 * The request path
+	 *
+	 * @var string
+	 **/
+	private static $request_path = NULL;
 
 	/**
 	 * All routes in their compiled form
@@ -101,20 +143,39 @@ class Moor {
 	 **/
 	private static $uncompiled_routes = array();
 
+
 	// ==============
 	// = Public API =
 	// ==============
 
 	/**
-	 * Add a debug messages to the messages stack
+	 * Enable persistent caching through APC
 	 *
-	 * @param string $method The method adding the message
-	 * @param string $message The debug message
-	 * @return void
+	 * @return object  The Moor instance for chaining
 	 */
-	public static function addMessage($method, $message) 
+	public static function enableCache()
 	{
-		array_push(self::$messages, $message);
+		if (!extension_loaded('apc') || !isset($_SERVER['HTTP_HOST'])) {
+			throw new MoorProgrammerException(
+				'Caching cannot be enabled. APC doesn\'t appear to be loaded or there is no $_SERVER[\'HTTP_HOST\'] to use as a unique key'
+			);
+		}
+		
+		self::$enable_cache = TRUE;
+		
+		return self::getInstance();
+	}
+
+	/**
+	 * Enable or disable the debugging
+	 *
+	 * @return object  The Moor instance for chaining
+	 **/
+	public static function enableDebug()
+	{
+		self::$debug = TRUE;
+		return self::getInstance();
+		
 	}
 
 	/**
@@ -135,22 +196,22 @@ class Moor {
 		$callback_string = array_shift($param_values);
 		$callback_string = trim($callback_string);
 
-		if (strpos($callback_string, '::') == 0 && self::$active_callback) {
-			try {
-				$rm = new ReflectionMethod(self::$active_callback);
-				$callback_string = $rm->getDeclaringClass()->getName() . $callback_string;
-			} catch (ReflectionException $e) {
-				return '#';
+		if (strpos($callback_string, '*::') === 0 && self::getActiveClass()) {
+			$callback_string = self::getActiveClass() . substr($callback_string, 1);
+		} else if (strpos($callback_string, '*\\') === 0 || preg_match('/^\*_[A-Z][A-Za-z0-9]*::/', $callback_string)) {
+			if (self::getActiveNamespace()) {
+				$callback_string = self::getActiveNamespace() . substr($callback_string, 1);	
 			}
 		}
 
-		if (!isset(self::$cache_for_linkTo[$key])) {
-			self::$cache_for_linkTo[$key] = FALSE;
+		if (!isset(self::$cache->link_to[$key])) {
+			
+			//self::$cache_for_linkTo[$key] = FALSE;
 
 			$best_route = NULL;
-			$param_names = preg_split('/\s+/', $callback_string);
-			$param_names_flipped = array_flip($param_names);
+			$param_names = preg_split('/(?<=[^:])(\s*:)(?!:)/', $callback_string);
 			$callback_string = array_shift($param_names);
+			$param_names_flipped = array_flip($param_names);
 			$callback_params = array();
 			$param_matches = NULL;
 			$low_dist = NULL;
@@ -192,6 +253,10 @@ class Moor {
 					}
 				}
 			}
+			
+			if (!$best_route) {
+				throw new MoorProgrammerException('No link could be found for the callback ' . $callback_string);
+			}
 		
 			if ($best_route) {
 				$cache = (object) $best_route->url->shorthand;
@@ -220,11 +285,11 @@ class Moor {
 				
 				$cache->url = $url;
 				
-				self::$cache_for_linkTo[$key] = $cache;
+				self::$cache->link_to[$key] = $cache;
 			}
 		}
 
-		$cache =& self::$cache_for_linkTo[$key];
+		$cache =& self::$cache->link_to[$key];
 
 		if ($cache == FALSE) {
 			return '#';
@@ -255,16 +320,6 @@ class Moor {
 	}
 
 	/**
-	 * Returns the callback string for the currently running route
-	 *
-	 * @return string
-	 */
-	public static function getCallback()
-	{
-		return self::$active_callback;
-	}
-
-	/**
 	 * Return whether debugging is enabled or not
 	 *
 	 * @return boolean 
@@ -283,37 +338,116 @@ class Moor {
 	{
 		return self::$messages;
 	}
+	
+	/**
+	 * Returns the callback for the currently running route
+	 *
+	 * @return string
+	 */
+	public static function getActiveCallback()
+	{
+		return self::$active_callback;
+	}
+	
+	/**
+	 * Returns the class (w/ namespace for the currently running route
+	 *
+	 * @return string
+	 **/
+	public static function getActiveClass()
+	{
+		return self::$active_class;
+	}
+	
+	/**
+	 * Returns the path for the currently running route's class
+	 *
+	 * @return string
+	 */
+	public static function getActiveClassPath()
+	{
+		return self::pathTo(self::getActiveClass());
+	}
+	
+	/**
+	 * Returns the function for the currently running route
+	 *
+	 * @return string
+	 */
+	public static function getActiveFunction()
+	{
+		return self::$active_function;
+	}
+
+	/**
+	 * Returns the method (w/ class and namespace) for the currently running route
+	 *
+	 * @return string
+	 */
+	public static function getActiveMethod()
+	{
+		return self::$active_method;
+	}
+
+	/**
+	 * Returns the namespace for the currently running route
+	 *
+	 * @return string
+	 */
+	public static function getActiveNamepsace()
+	{
+		return self::$active_namespace;
+	}
+
+	/**
+	 * Returns the short class name (class w/o namespace) for the currently running route
+	 *
+	 * @return string
+	 */
+	public static function getActiveShortClass()
+	{
+		return self::$active_short_class;
+	}
+
+	/**
+	 * Returns the short method (method w/o class or namespace) for the currently running route
+	 *
+	 * @return string
+	 */
+	public static function getActiveShortMethod()
+	{
+		return self::$active_short_method;
+	}
 
 	/**
 	 * Returns the path for the currently running route
 	 *
 	 * @return string
 	 */
-	public static function getPath()
+	public static function getActivePath()
 	{
-		return self::$active_path;
+		return self::pathTo(self::getActiveCallback());
 	}
-
+	
 	/**
-	 * Makes a path out of a callback string.
+	 * Get the path to the supplied callback
 	 *
-	 * @param string $callback_string 
-	 * @return string  The path created from the callback
+	 * @param string $callback 
+	 * @param string $directory_separator 
+	 * @return void
 	 */
-	public static function makePath($callback_string)
-	{
-		$ds = DIRECTORY_SEPARATOR;
+	public static function pathTo($callback, $directory_separator=NULL) {
+		$string = $callback;
 		
-		$string = str_replace('::', $ds, $callback_string);
-		$string = str_replace('\\', $ds, $string);
-		$string = preg_replace('/_([A-Z])/', $ds.'$1', $string);
-
-		$pieces = explode($ds, $string);
-		foreach($pieces as $n => $piece) {
-			$pieces[$n] = self::underscorize($piece);
+		if (strpos('*::', $callback) === 0) {
+			$string = self::getActiveClass() . substr($callback, 1);
+		} 
+		
+		if (strpos('*\\', $callback) === 0 || preg_match('/^\*_[A-Z][A-Za-z0-9]*::/', $callback)) {
+			$string = self::getActiveNamespace() . substr($callback, 1);
 		}
 		
-		return $ds . join($ds, $pieces);
+		return self::makePath($string, $directory_separator);
 	}
 
 	/**
@@ -353,89 +487,92 @@ class Moor {
 	 * @return void
 	 */
 	public static function run() 
-	{
-		self::$running = TRUE;
+	{	
+		self::loadCache();
 		
+		if (!self::$enable_cache) {
+			self::clearCache();
+		}
+			
+		self::$running = TRUE;	
+		self::$request_path = preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']);
+
 		self::compile();
 		
+		if (isset(self::$cache->matched_routes[self::$request_path])) {
+			self::dispatchRoute(self::$cache->matched_routes[self::$request_path], FALSE, FALSE);
+		}
+
 		$old_GET = $_GET;
 		$_GET = array();
-
-		$request_path = preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']);
-
-		foreach(self::$routes as $route):
-			self::$active_callback = NULL;
-			self::$active_path = NULL;
 		
+		foreach(self::$routes as $route):
+			self::$cache->matched_routes[self::$request_path] = $route;
+			
+			self::$active_callback = NULL;
+			self::$active_namespace = NULL;
+			self::$active_class = NULL;
+			self::$active_short_class = NULL;
+			self::$active_method = NULL;
+			self::$active_short_method = NULL;
+			self::$active_function = NULL;
+			
 			$_GET = $old_GET;
 
 			try {
-				if (!preg_match($route->url->pattern, $request_path, $matches)) {
-					continue;
-				}
-
-				foreach($matches as $name => $param):
-					if (is_string($name)) {
-						$_GET[$name] = $param;
-					}
-				endforeach;
-
 				self::dispatchRoute($route);
-				exit();
-
 			} catch (MoorContinueException $e) {
+				unset(self::$cache->matched_routes[self::$request_path]);
 				continue;
 			} catch (MoorNotFoundException $e) {
+				unset(self::$cache->matched_routes[self::$request_path]);
 				break;
 			}
+			
+			unset(self::$cache->matched_routes[self::$request_path]);
 		endforeach;
 
-		self::addMessage(__METHOD__, 'No Matches Found. Running Not Found callback: ' . self::$not_found_callback);
-		
+		self::$messages[] = 'No Valid Matches Found. Running Not Found callback: ' . self::$not_found_callback;
+
+		self::saveCache();
 		call_user_func(self::$not_found_callback);
 		exit();
 	}
-
+	
 	/**
-	 * Enable or disable the debugging
+	 * Sets the cache key
 	 *
-	 * @return void
-	 **/
-	public static function setDebug($bool=TRUE)
+	 * @param string $key The server unique APC key to be used for caching
+	 * @return object  The Moor instance for chaining
+	 */
+	public static function setCacheKey($key)
 	{
-		self::$debug = (boolean) $bool;
+		self::$cache_key = $key;
+		return self::getInstance();
 	}
-
+	
 	/**
 	 * Sets the pattern that will match a URL request param if no pattern is given
 	 *
 	 * @param string $pattern  The regular expression to match a request param in the URL
-	 * @return void
+	 * @return object  The Moor instance for chaining
 	 **/
-	public static function setDefaultRequestParamPattern($pattern)
+	public static function setRequestParamPattern($pattern)
 	{
-		self::$default_param_pattern = $pattern;
+		self::$default_request_param_pattern = $pattern;
+		return self::getInstance();		
 	}
 
 	/**
-	 * Sets the response from linkTo if a valid match can't be found
-	 *
-	 * @param string $response  The string to return a link isn't found
-	 * @return void
-	 **/
-	public function setLinkNotFoundResponse($response)
-	{
-		self::$link_not_found_response = $response;
-	}
-	
-	/**
 	 * Set the callback for when a route is not found.
 	 *
-	 * @return void
+	 * @param string $callback  The static method or function callback for 404s
+	 * @return object  The Moor instance for chaining
 	 **/
 	public static function setNotFoundCallback($callback)
 	{
 		self::$not_found_callback = $callback;
+		return self::getInstance();
 	}
 
 	/**
@@ -470,8 +607,28 @@ class Moor {
 	/**
 	 * Converts an `underscore_notation` or `camelCase` string to `camelCase`
 	 * 
-	 * Derived from MIT fGrammer::camelize by Will Bond <will@flourishlib.com>
+	 * Derived from MIT fGrammer::camelize
 	 * Source: http://flourishlib.com/browser/fGrammar.php
+	 *
+	 * Copyright (c) 2007-2009 Will Bond <will@flourishlib.com>
+	 * 
+	 * Permission is hereby granted, free of charge, to any person obtaining a copy
+	 * of this software and associated documentation files (the "Software"), to deal
+	 * in the Software without restriction, including without limitation the rights
+	 * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	 * copies of the Software, and to permit persons to whom the Software is
+	 * furnished to do so, subject to the following conditions:
+	 * 
+	 * The above copyright notice and this permission notice shall be included in
+	 * all copies or substantial portions of the Software.
+	 * 
+	 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	 * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	 * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	 * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	 * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+	 * THE SOFTWARE.	
 	 *
 	 * @param  string  $original The string to convert
 	 * @param  boolean $upper    If the camel case should be `UpperCamelCase`
@@ -480,10 +637,10 @@ class Moor {
 	private static function &camelize($original, $upper=FALSE)
 	{
 		$upper = (int) $upper;
-		$key   = __FUNCTION__ . "/{$upper}/{$original}";
+		$key   = "{$upper}/{$original}";
 
-		if (isset(self::$cache[$key])) {
-			return self::$cache[$key];		
+		if (isset(self::$cache->camelize[$key])) {
+			return self::$cache->camelize[$key];		
 		}
 
 		$string = $original;
@@ -501,7 +658,8 @@ class Moor {
 			$string = preg_replace('/(_([a-z0-9]))/e', 'strtoupper("\2")', $string);		
 		}
 		
-		return self::$cache[$key] =& $string;
+		self::$cache->camelize[$key] =& $string;
+		return $string;
 	}
 
 	/**
@@ -511,6 +669,11 @@ class Moor {
 	 */
 	private static function compile()
 	{
+		if (self::$cache->compiled) {
+			self::$routes = self::$cache->compiled_routes;
+			return;
+		}
+		
 		foreach(self::$uncompiled_routes as $uncompiled_route) {
 
 			$route = (object) 'route';
@@ -519,7 +682,8 @@ class Moor {
 			$route->callback = self::parseCallback($uncompiled_route->callback);
 			$route->function = $uncompiled_route->function;
 
-			// validate route
+			// validate that the url and callback use the same callback params
+			
 			$diff = array_merge(
 				array_diff_key($route->callback->params, $route->url->callback_params),
 				array_diff_key($route->url->callback_params, $route->callback->params)
@@ -533,6 +697,32 @@ class Moor {
 
 			array_push(self::$routes, $route);
 		}
+		
+		self::$cache->compiled = TRUE;
+		self::$cache->compiled_routes =& self::$routes;
+		self::saveCache();
+	}
+	
+	/**
+	 * Determines whether or we can enable the APC cache
+	 *
+	 * @return boolean
+	 */
+	private static function canCache()
+	{
+		return (extension_loaded('apc') && self::getCacheKey());
+	}
+	
+	/**
+	 * Clear the APC cache
+	 *
+	 * @return void
+	 */
+	private static function clearCache() 
+	{
+		if (self::canCache()) {
+			return apc_delete(self::getCacheKey());
+		}
 	}
 	
 	/**
@@ -543,59 +733,72 @@ class Moor {
 	 **/
 	private static function dispatchRoute($route)
 	{
-		// if there's an assoc. closure, no validation necessary.
+		if (!preg_match($route->url->pattern, self::$request_path, $matches)) {
+			return FALSE;
+		}
+		
+		self::$messages[] = 'Match. Request path ' . self::$request_path . ' matched URL definition "' . $route->url->scalar . '"';
+		
+		self::$cache->matched_routes[self::$request_path] = $route; 
+		self::saveCache();
+
+		foreach($matches as $name => $param):
+			if (is_string($name)) {
+				$_GET[$name] = $param;
+			}
+		endforeach;
+		
+		$callback_string = self::injectParamsIntoCallback($route->callback);
+		
+		self::$messages[] = 'Generated Callback: ' . $callback_string;
+		
+		self::$active_callback = $callback_string;
+		
+		// dispatch closure
 		if ($route->function instanceof Closure) {
+			self::$active_function = $callback_string;
+			self::$messages[] = 'Calling assigned closure';
 			call_user_func($route->function);
 			exit();
+	
+		// dispatch function
+		} else if (function_exists($callback_string)) {
+			$function = new ReflectionFunction($callback_string);
+			
+			if (method_exists($function, 'getNamespaceName')) {
+				self::$active_namespace = $function->getNamespaceName();
+			}
+			self::$active_function  = $callback_string;
+			
+			self::$messages[] = 'Calling function: ' . $callback_string;
+			call_user_func($callback_string);
+			exit();
+
+		// dispatch method
+		} else {
+			self::validateMethodCallback($callback_string);
+			$method = new ReflectionMethod($callback_string);
+			$class  = $method->getDeclaringClass()->getName();
+			$parsed_class = self::parseClass($class);
+			
+			self::$active_method = $callback_string;
+			self::$active_short_method = $method->getName();
+			self::$active_class = $class;
+			self::$active_short_class = $parsed_class['short_class'];
+			self::$active_namespace = $parsed_class['namespace'];
+			
+			if ($method->isStatic()) {
+				self::$messages[] = 'Calling static method: ' . $callback_string;
+				call_user_func($callback_string);
+				exit();
+			} else {
+				self::$messages[] = 'Instantiating class for ' . $callback_string;
+ 				new $class();
+				exit();
+			}
 		}
 
-		$callback_string = self::injectParamsIntoCallback($route->callback);
-
-		self::$active_callback = $callback_string;
-		self::$active_path = self::makePath($callback_string);
-
-		try {
-			// attempt to run a method callback
-			$method = new ReflectionMethod($callback_string);
-			$class  = $method->getDeclaringClass();
-
-			// validate method callback
-			if (!$class->isSubclassOf('MoorAbstractController')) {
-				self::addMessage(__METHOD__, 'Skipping callback: ' . $callback_string . '. Class doesn\'t implement or extend a MoorController interface.');
-				self::triggerContinue();
-			}
-
-			if ($method->getName() == '_moor') {
-				self::addMessage(__METHOD__, 'Skipping callback: ' . $callback_string . '. Method reserved.');
-				self::triggerContinue();
-			}
-
-			if (strpos($method->getName(), '__') === 0) {
-				self::addMessage(__METHOD__, 'Skipping callback: ' . $callback_string . '. Method looks like magic method.');
-				self::triggerContinue();
-			}
-
-			if (!$method->isPublic()) {
-				self::addMessage(__METHOD__, 'Skipping callback: ' . $callback_string . '. Method isn\'t public.');
-				self::triggerContinue();
-			}
-
-			// set currently running Method
-			$class_name = $class->getName();
-			new $class_name($callback_string);
-			exit();
-		} catch (ReflectionException $e) {}
-
-		try {
-
-			// attempt to run a function callback
-			$function = new ReflectionFunction($callback_string);
-			call_user_func($function->getName());
-			exit();
-
-		} catch (ReflectionException $e) {}
-
-		self::addMessage(__METHOD__, 'Skipping callback: ' . $callback_string . '. Not a valid method or function.');
+		self::$messages[] = 'Skipping callback: ' . $callback_string . '. Not a valid method or function.';
 		self::triggerContinue();
 	}
 
@@ -674,7 +877,7 @@ class Moor {
 			$request_param = (object) $name[0];
 			$request_param->name = $name[0];
 			$request_param->search = ':'.$name[0];
-			$pattern = self::$default_param_pattern;
+			$pattern = self::$default_request_param_pattern;
 
 			if (isset($matches['pattern_offset'][$key][1])) {
 				// match nested/symmetric parens
@@ -708,7 +911,24 @@ class Moor {
 
 		return $request_params;
 	}
-
+	
+	/**
+	 * Gets the cache key
+	 *
+	 * @return string
+	 */
+	private static function getCacheKey() 
+	{
+		if (!self::$cache_key) {
+			if (!isset($_SERVER['HTTP_HOST'])) {
+				throw new MoorProgrammerException('Caching was enabled, but there is no value within $_SERVER[\'HTTP_HOST\'] to use as an APC key. Manually set the key with Moor::setCacheKey.');
+			}
+			
+			self::$cache_key = $_SERVER['HTTP_HOST'];
+		}
+		return 'Moor:'.self::$cache_key;
+	}
+	
 	/**
 	 * Gets instance of Moor for chaining methods
 	 *
@@ -743,6 +963,31 @@ class Moor {
 	}
 
 	/**
+	 * Load the cache, whether local or APC
+	 *
+	 * @return void
+	 */
+	private static function loadCache()
+	{
+		if (self::$cache) {
+			return;
+		}		
+		if (self::$enable_cache) {
+			self::$cache = apc_fetch(self::getCacheKey());
+		}
+		if (!self::$cache) {
+			// create the cache if it doesn't exist in apc yet
+			self::$cache = (object) 'Moor Cache';
+			self::$cache->camelize = array();
+			self::$cache->compiled = FALSE;
+			self::$cache->underscorize = array();
+			self::$cache->compiled_routes = array();
+			self::$cache->matched_routes = array();
+			self::$cache->link_to = array();
+		}
+	}
+
+	/**
 	 * convert a string to lowerCamelCase
 	 *
 	 * @param string $string 
@@ -752,6 +997,28 @@ class Moor {
 	{
 		return self::camelize($string);
 	}
+	
+	/**
+	 * Makes a path out of a callback string.
+	 *
+	 * @param string $callback_string 
+	 * @return string  The path created from the callback
+	 */
+	private static function makePath($callback_string, $ds=NULL)
+	{
+		$ds = ($ds === NULL) ? DIRECTORY_SEPARATOR : $ds;
+		
+		$string = str_replace('::', $ds, $callback_string);
+		$string = str_replace('\\', $ds, $string);
+		$string = preg_replace('/_([A-Z])/', $ds.'$1', $string);
+
+		$pieces = explode($ds, $string);
+		foreach($pieces as $n => $piece) {
+			$pieces[$n] = self::underscorize($piece);
+		}
+		
+		return $ds . join($ds, $pieces);
+	}
 
 	/**
 	 * Reads a callback string and converts to a callback object
@@ -760,10 +1027,6 @@ class Moor {
 	 * @return object The callback object
 	 */
 	private static function &parseCallback($callback_string) {
-		if (isset(self::$cache[__FUNCTION__.$callback_string])) {
-			return self::$cache[__FUNCTION__.$callback_string];
-		}
-
 		$callback = (object) trim($callback_string, '\\');
 		
 		$callback->pattern   = $callback->scalar;
@@ -779,7 +1042,32 @@ class Moor {
 
 		$callback->pattern = "/^" . str_replace('\\', '\\\\', $callback->pattern) . "$/";
 
-		return self::$cache[__FUNCTION__.$callback_string] =& $callback;
+		return $callback;
+	}
+	
+	/**
+	 * Parses a class into a namespace and short class name
+	 * 5.3 can do this with reflection, but this method works for 5.3 
+	 * style \namespaces and 5.2 Style_Namespaces
+	 *
+	 * @param string class  The class to parse
+	 * @return array  An array of the namespace and short class name
+	 */
+	private static function parseClass($class) {
+		if (strpos($class, '\\') !== FALSE) {
+			preg_match('/^(?P<namespace>.*)\\\\(?P<short_name>)[a-zA-Z][a-zA-Z0-9]*)$/', $class, $matches);
+			$namespace  = (isset($matches['namespace']))  ? $matches['namespace']  : NULL;
+			$short_class = (isset($matches['short_class'])) ? $matches['short_class'] : NULL;
+		} else {
+			preg_match('/^(?P<namespace>.*)_(?P<short_name>[A-Z][A-Za-z0-9]*)$/', $class, $matches);
+			$namespace  = (isset($matches['namespace']))  ? $matches['namespace']  : NULL;
+			$short_class = (isset($matches['short_class'])) ? $matches['short_class'] : NULL;
+		}
+		
+		return array(
+			'namespace' => $namespace,
+			'short_class' => $short_class
+		);
 	}
 
 	/**
@@ -789,10 +1077,6 @@ class Moor {
 	 * @return object The URL object
 	 */
 	private static function &parseUrl($url_string) {
-		if (isset(self::$cache[__FUNCTION__.$url_string])) {
-			return self::$cache[__FUNCTION__.$url_string];
-		}
-
 		$url = (object) $url_string;		
 		$url->shorthand = trim($url_string);
 		$url->pattern   = $url->shorthand;
@@ -850,20 +1134,54 @@ class Moor {
 	}
 	
 	/**
+	 * Save the cache object to APC
+	 *
+	 * @return void
+	 */
+	private static function saveCache() 
+	{
+		if (!self::$enable_cache) { 
+			return; 
+		}
+		
+		apc_store(self::getCacheKey(), self::$cache);
+	}
+
+	/**
 	 * Converts a `camelCase` or `underscore_notation` string to `underscore_notation`
 	 *
-	 * Derived from MIT fGrammer::camelize by Will Bond <will@flourishlib.com>
+	 * Derived from MIT fGrammer::camelize
 	 * Source: http://flourishlib.com/browser/fGrammar.php
+	 *
+	 * Copyright (c) 2007-2009 Will Bond <will@flourishlib.com>
+	 * 
+	 * Permission is hereby granted, free of charge, to any person obtaining a copy
+	 * of this software and associated documentation files (the "Software"), to deal
+	 * in the Software without restriction, including without limitation the rights
+	 * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	 * copies of the Software, and to permit persons to whom the Software is
+	 * furnished to do so, subject to the following conditions:
+	 * 
+	 * The above copyright notice and this permission notice shall be included in
+	 * all copies or substantial portions of the Software.
+	 * 
+	 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	 * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	 * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	 * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	 * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	 * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+	 * THE SOFTWARE.
 	 *
 	 * @param  string $string  The string to convert
 	 * @return string  The converted string
 	 */
 	private static function &underscorize($string)
 	{
-		$key = __FUNCTION__ . "/{$string}";
-		
-		if (isset(self::$cache[$key])) {
-			return self::$cache[$key];		
+		$key = $string;
+
+		if (isset(self::$cache->underscorize[$key])) {
+			return self::$cache->underscorize[$key];		
 		}
 
 		$original = $string;
@@ -886,7 +1204,8 @@ class Moor {
 			$string = strtolower($string);
 		}
 
-		return self::$cache[$key] =& $string;
+		self::$cache->underscorize[$key] =& $string;
+		return $string;
 	}
 
 	/**
@@ -898,6 +1217,37 @@ class Moor {
 	private static function upperCamelize($string)
 	{
 		return self::camelize($string, TRUE);
+	}
+	
+	/**
+	 * Validates that a method callback can be dispatched
+	 *
+	 * @param string $callback  the callback string
+	 * @return void
+	 */
+	private static function validateMethodCallback($callback) {
+		try {
+			$method = new ReflectionMethod($callback);
+			$class = $method->getDeclaringClass();
+		} catch (ReflectionException $e) {
+			self::$messages[] = 'Continue. Method ' . $callback . ' doesn\'t exist.';
+			self::triggerContinue();
+		}
+		
+		if (!$class->isSubclassOf('MoorAbstractController')) {
+			self::$messages[] = 'Continue. Class for method ' . $callback . '. isn\'t a subclass of MoorAbstractController.';
+			self::triggerContinue();
+		}
+
+		if (strpos($method->getName(), '__') === 0) {
+			self::$messages[] = 'Continue. Method ' . $callback . ' looks like magic method.';
+			self::triggerContinue();
+		}
+
+		if (!$method->isPublic()) {
+			self::$messages[] = 'Continue. Method ' . $callback . ' isn\'t public.';
+			self::triggerContinue();
+		}
 	}
 }
 

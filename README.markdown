@@ -1,5 +1,7 @@
 # Moor
 
+A URL Routing/Linking/Controller library for PHP 5.
+
 - Introduction
 - Concepts To Understand
 - Hello World (PHP 5.2)
@@ -9,6 +11,8 @@
 	- Request Parameters
 	- Callback Parameters
 - Link Generation
+- Active Callback (& Friends)
+- Path Generation
 - 404 Callback
 - Debugging
 - Built-In Controllers (DOCS COMING SOON)
@@ -18,19 +22,15 @@
 		- Magic Methods 
 		- Location Helpers 
 		- Path Helpers 
-- Advanced Tips (DOCS COMING SOON)
-	- Path Helpers
-	- 404 Triggering
-	- Continue Triggering
 - Credits
 
 ## Warning
 
-In the process of writing docs and testing. Please wait a few days. :-)
+Docs under review/construction/edits. Beware!
 
 ## Introduction
 
-Moor is URL routing, linking & controller library for PHP 5. It performs 2 actions very well: routing URLs to callbacks and generating URLs for callbacks.
+Moor is a URL Routing/Linking/Controller library for PHP 5. It performs 2 actions very well: routing URLs to callbacks and generating URLs for callbacks.
 
 While an understanding of MVC will help your grasp Moor's role in your application, Moor is not an MVC framework. It's a library that only handles routing and linking. Use your favorite ORM for your Models and your favorite templating system for your Views. If you don't need or want these pieces, write cool stuff without them.
 
@@ -61,7 +61,7 @@ http://en.wikipedia.org/wiki/Model-view-controller
 	
 ## Initial Set Up
 
-Not much is needed to set up Moor. With your HTTP Server of choice, simply route all requests that don't exists to a single PHP script. This pattern is typically referred to as a Front Controller. In Apache, these rules can be placed in your .htaccess:
+Not much is needed to set up Moor. With your HTTP Server of choice, simply route all requests for paths/files that don't exists to a single PHP script. This pattern is typically referred to as a Front Controller. In Apache, these rules can be placed in your .htaccess:
 
 	# route non-existant requests to single script
 	RewriteCond %{DOCUMENT_ROOT}/%{REQUEST_URI} !-f
@@ -126,7 +126,7 @@ It's nice when you chain it on the end of some routes.
 		route('/page2', 'page_two')->
 		run();
 		
-## Request Parameters
+### Request Parameters
 
 Parameters can be extracted from URLs by using a prepending a URL piece with a colon, i.e. :var_name. By default, they are matched by the pattern [0-9A-Za-z\_-]+.
 
@@ -141,8 +141,11 @@ If we need to match a specific pattern, we can add a pattern in parenthesis afte
 	// only match digits for the :id param
 	Moor::route('/users/:id(\d+)', 'MyApp\User::read');
 
+To change the default request param pattern, use Moor::setRequestParamPattern:
 
-## Callback Parameters
+	Moor::setRequestParamPattern('[A-Z_]+');
+
+### Callback Parameters
 
 A lot of times the callbacks provided won't (and shouldn't) be static, so we have to allow for parameters from the url to be moved into the callback. These are similar to request parameters, but are prefixed with an @. All callback parameters are available in the callback definition.
 	
@@ -156,23 +159,17 @@ A lot of times the callbacks provided won't (and shouldn't) be static, so we hav
 	
 Typically, we need to format the callback params to fit with our own coding standard, so we can add formatting rules in parenthesis after the callback parameter definition. There are currently 3 formatting rules that can be applied.
 
-	u  => underscore (DEFAULT)
+	u  => underscore (default, used if no formatting rule is specified)
 	lc => lowerCamelCase
 	cc => UpperCamelCase
 
-	Moor::route('/@class(u)/:id/@method(u)', '@class(uc)::@method(lc)');
+	Moor::route('/@class/:id/@method', '@class(uc)::@method(lc)');
+
 	// incoming /user/4/delete_me resolves to User::delete AND $_GET['id'] = 4
 	// incoming /user/5/activate resolves to User::activate AND $_GET['id'] = 5
 	// incoming /user/4/run_script resolves to User::runScript AND $_GET['id'] = 4
 	// incoming /groups/3/update resolves to Groups::update AND $_GET['id'] = 3
 
-Note the formatting rules in the URL definition. Linking to User::delete w/ id of 4 will generate /user/4/delete. See how User became user for the url? UserGroup would become user\_group (see Link Generation for more info.)
-	
-	// Technically, since underscore format is the default we can drop 
-	// all (u) rules ...unless you want to be explicit.
-	
-	Moor::route('Moor::route('/@class/:id/@method', '@class(uc)::@method(lc)');
-	
 The names of callback params are arbitrary. Just build a valid callback with them. 
 
 	Moor::route('/@c/:id/@m', '@c(uc)::@m(lc)');
@@ -185,11 +182,22 @@ The only rule is that you must use have the same callback params in the URL and 
 
 ## Link Generation
 
-If we are defining our links with the route method, why should we have to write them over and over throughout our application? The answer is: we shouldn't. Let's say we define the following routes.
+Moor can generate links to any callback defined in a route. Let's say we define the following routes.
 
 	Moor::route('/:name', 'home', function(){
 		'Welcome, ' . $_GET['name'];
 	});
+
+	Moor::
+		route('/@class(u)/:id/@action(u)', '@class(uc)::@method(lc)')->
+		route('/@class(u)/:id', '@class(uc)::read')->
+		route('/@class(u)/:id.:format([a-z]{1,3})', @class(uc)::read')->
+		route('/@class(u)', '@class(uc)::index')->
+		run();
+		
+Note the formatting rules in the URL definition callback params. Just as we defined these rules in the callback, we can define in the URL, above we are explicitly saying "convert the callback to underscore format" across the board. Linking to User::delete w/ id of 4 will generate /user/4/delete. See how User became user for the url? a class named UserGroup would become user\_group for the URL. 
+
+Typically, we'll always want underscore format for the URL callback params, so we can drop that formatting rule altogether as it's the default. 
 
 	Moor::
 		route('/@class/:id/@action', '@class(uc)::@method(lc)')->
@@ -197,39 +205,101 @@ If we are defining our links with the route method, why should we have to write 
 		route('/@class/:id.:format([a-z]{1,3})', @class(uc)::read')->
 		route('/@class', '@class(uc)::index')->
 		run();
-	
-We can now link to these with the Moor::linkTo method This method takes the callback (or closure name) plus space separated request param names we want to pass, then a variable length argument list of the values of those params.
 
-	Moor::linkTo('Users::delete id', 1); 
+Great. But how to we generate links?? We can with the Moor::linkTo method. This method takes the callback (or closure name) plus colon (and optionally space) separated request param names we want to pass, then a variable length argument list of the values of those params. Look at these examples:
+
+	Moor::linkTo('Users::delete :id', 1); 
 	// generates /users/1/delete
 	
-	Moor::linkTo('Users::read id', 200);
+	Moor::linkTo('Users::read :id', 200);
 	// generates /users/200
 	
-	Moor::linkTo('Users::read id format', 5, 'json');
+	Moor::linkTo('Users::read :id :format', 5, 'json');
 	// generates /users/5.json
 	
 	Moor::linkTo('Users::index');
 	// generates /users
 	
-	Moor::linkTo('home name', 'bob');
+	Moor::linkTo('home :name', 'bob');
 	// generates /bob;
 	
 	Moor::linkTo('No\Way::jose');
-	// no callback match can be found, returns '#'
+	// no callback match can be found, throws a MoorProgrammerException
 	
 Request params that don't exist in the URL definition are appended to the query string.
 	
-	Moor::linkTo('Users::update id name', 17, 'john');
+	Moor::linkTo('Users::update :id :name', 17, 'john');
 	// generates /users/17/update?name=john
 	
-We can only use linkTo once Moor's router has been started with run(). If the route cannot be found, Moor::linkTo will return '#'.
+If you want to link to a method callback within the current active class, linkTo can accept a wildcard in the callback:
 
+	Moor::linkTo('*::edit');
+	// links to Users::edit if our currently running callback is in the Users class.
+	
+This can also be used on the namespace level:
+
+	// 5.3+ style namespaces
+	Moor::linkTo('*\my_function');
+	Moor::linkTo('*\Users::edit');
+	
+	// 5.2 style namespaces will consider anything before an _CamelCase class name as a namespace
+	// Example: Admin_Users::edit => namespace will be Admin
+	Moor::linkTo('*_Users::edit');
+	
+
+We can only use linkTo once Moor's router has been started with run(). If the route cannot be found, Moor::linkTo will throw a MoorProgrammerException. Currently, Moor considers a callback valid if it matches a route and does not determine if the callback actually exists.
+
+## Active Callback (& Friends)
+
+Moor defines a few methods to help get information about the current active/running callback. If the callback you've defined in your route doesn't contain one of these pieces, that pieces' function will simply return NULL.
+
+	Moor::getActiveCallback() 
+	// returns the currently running callback in it's full form
+
+	Moor::getActiveClass()
+	// returns the class name (plus namespace) of the currently running callback
+
+	Moor::getActiveFunction()
+	// returns the function name of the currently running callback
+
+	Moor::getActiveMethod()
+	// returns the method name (plus namespace & class) of the currently running callback
+
+	Moor::getActiveNamespace()
+	// returns the namespace of the currently running callback
+
+	Moor::getActiveShortClass()
+	// returns the class name (minus namespace) of the currently running callback
+
+	Moor::getActiveShortMethod()
+	// returns the method name (minus namespace & class) of the currently running callback
+
+## Path Generation
+
+Typically, it's convenient to map your callbacks to file paths in order to pull in associated files. Such as views. We can generate a path with Moor::pathTo(). This method takes the same argument style as Moor::linkTo(), minus the request params.
+
+	Moor::pathTo('User::edit');
+	// returns /user/edit
+	
+	Moor::pathTo('Dashboard\Groups::add');
+	// returns /dashboard/groups/add
+	
+	Moor::pathTo('Admin_StoreItems::delete');
+	// returns /admin/store_items/delete
+	
+Or, as a convenience, there are two active path methods to generate paths for running callbacks:
+
+	Moor::getActivePath();
+	// returns the path for the currently running callback
+	
+	Moor::getActiveClassPath();
+	// returns the path for the currently running callback's class
+	
 ## 404 Callback
 
 There is a default callback that is run when a route cannot be found: Moor::routeNotFoundCallback. This can be changed with:
 
-	Moor::setNotFoundCallback('your_own_404_callback');
+	Moor::setNotFoundCallback('Your::own404Callback');
 	
 Please note that the default not found callback can optionally display debugging information, so if you still wanted debug messages, you would need to add this functionality to your custom callback.
 
@@ -237,19 +307,27 @@ Please note that the default not found callback can optionally display debugging
 
 Enable debugging on the default 404 page with:
 
-	Moor::setDebug(TRUE);
+	Moor::enableDebug();
 	// you can also check if debugging is 
 	// enabled with: Moor::getDebug()
 	
 Debugging is off by default. If you are creating your own 404 page, you can get an array of all debug messages with:
 
 	Moor::getMessages();
+
+## Caching
+
+Enable caching for routes and links through APC with:
+
+	Moor::enableCache();
+	
+By default, Moor will use the the value in $\_SERVER['HTTP_HOST'] for the unique APC key, but if you need to use a custom key, you can with:
+
+	Moor::setCacheKey('my_custom_apc_key');
+	
+Note: Enabling caching is not recommended unless there is a noticeable slowdown. You will most likely not notice any performance gain unless you have a very large amount of routes and are linking to a very large set of unique callbacks on a single page. Other than a few rare edge cases, if this is how you're application is structured, you're most likely doing it wrong. :-)
 	
 ## Built-In Controllers
-
-Coming Soon
-
-## Advanced Tips
 
 Coming Soon
 

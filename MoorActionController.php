@@ -1,13 +1,13 @@
 <?php
 /**
- * Built-In Action Controller for Moor, a routing and controller library for PHP5
+ * Built-In Action Controller for Moor, a URL Routing/Linking/Controller library for PHP 5
  *
  * @copyright  Copyright (c) 2010 Jeff Turcotte
  * @author     Jeff Turcotte [jt] <jeff.turcotte@gmail.com>
  * @license    MIT (see LICENSE or bottom of this file)
  * @package    Moor
  * @link       http://github.com/jeffturcotte/moor
- * @version    1.0.0b3
+ * @version    1.0.0b4
  */
 class MoorActionController extends MoorAbstractController  {
 	/**
@@ -15,21 +15,19 @@ class MoorActionController extends MoorAbstractController  {
 	 *
 	 * @return void
 	 */
-	final public function __construct() {
-		$method = new ReflectionMethod(Moor::getCallback());
-		
-		$this->_before();
+	public function __construct() {
+		$this->__before();
 		
 		try {
-		    $this->{$method->getName()}();
-		    
+		    parent::__construct();
+		
 		} catch (Exception $e) {
 		    
 		    $exception = new ReflectionClass($e);
 
 		    while($exception) {
     		    // pass exceptions to a __catch_ExceptionClass method 
-    		    $magic_exception_catcher = "_catch" . $exception->getName();
+    		    $magic_exception_catcher = "__catch" . $exception->getName();
 				if (is_callable(array($this, $magic_exception_catcher))) {
 					call_user_func_array(array($this, $magic_exception_catcher), array($e));
 					break;
@@ -42,18 +40,19 @@ class MoorActionController extends MoorAbstractController  {
             }
 		}
 		
-		$this->_after();
+		$this->__after();
 	}
 	
-	protected function _before() {}
-	protected function _after() {}
+	protected function __before() {}
+	protected function __after() {}
 }
 
 // ===========
 // = License =
 // ===========
 
-// Moor - a routing, linking and controller library for PHP5
+// Moor - A URL Routing/Linking/Controller library for PHP 5
+
 // 
 // Copyright (c) 2010 Jeff Turcotte
 // 

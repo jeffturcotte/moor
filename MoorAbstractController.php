@@ -1,6 +1,6 @@
 <?php
 /**
- * Built-in Abstract Controller for Moor, a routing and controller library for PHP5
+ * Built-in Abstract Controller for Moor, a URL Routing/Linking/Controller library for PHP 5
  *
  * *** All valid Controllers must extend MoorAbstractController ***
  *
@@ -9,7 +9,7 @@
  * @license    MIT (see LICENSE or bottom of this file)
  * @package    Moor
  * @link       http://github.com/jeffturcotte/moor
- * @version    1.0.0b3
+ * @version    1.0.0b4
  */
 class MoorAbstractController {
 	/**
@@ -18,8 +18,9 @@ class MoorAbstractController {
 	 * @return void
 	 */
 	public function __construct() {
-		$method = new ReflectionMethod(Moor::getCallback());
-		$this->{$method->getName()}();
+		call_user_func(array(
+			$this, Moor::getActiveShortMethod()
+		));
 	}
 }
 
@@ -27,7 +28,7 @@ class MoorAbstractController {
 // = License =
 // ===========
 
-// Moor - a routing, linking and controller library for PHP5
+// Moor - A URL Routing/Linking/Controller library for PHP 5
 // 
 // Copyright (c) 2010 Jeff Turcotte
 // 
