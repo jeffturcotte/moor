@@ -763,13 +763,19 @@ class Moor {
 	
 		// dispatch function
 		} else if (function_exists($callback_string)) {
+			// disallow dangerous functions
+			if (preg_match('/^[\*_\\\\]+$/', $route->callback->finder)) {
+				self::$messages[] = 'Skipping callback ' . $callback . ': Callback definition is dangerous.';
+				self::triggerContinue();
+			}
+
 			$function = new ReflectionFunction($callback_string);
-			
+
 			if (method_exists($function, 'getNamespaceName')) {
 				self::$active_namespace = $function->getNamespaceName();
 			}
 			self::$active_function  = $callback_string;
-			
+
 			self::$messages[] = 'Calling function: ' . $callback_string;
 			call_user_func($callback_string);
 			exit();

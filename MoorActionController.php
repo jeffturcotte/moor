@@ -16,7 +16,7 @@ class MoorActionController extends MoorAbstractController  {
 	 * @return void
 	 */
 	public function __construct() {
-		$this->__before();
+		$this->beforeAction();
 		
 		try {
 		    parent::__construct();
@@ -27,7 +27,7 @@ class MoorActionController extends MoorAbstractController  {
 
 		    while($exception) {
     		    // pass exceptions to a __catch_ExceptionClass method 
-    		    $magic_exception_catcher = "__catch" . $exception->getName();
+    		    $magic_exception_catcher = "catch" . $exception->getName();
 				if (is_callable(array($this, $magic_exception_catcher))) {
 					call_user_func_array(array($this, $magic_exception_catcher), array($e));
 					break;
@@ -40,11 +40,11 @@ class MoorActionController extends MoorAbstractController  {
             }
 		}
 		
-		$this->__after();
+		$this->afterAction();
 	}
 	
-	protected function __before() {}
-	protected function __after() {}
+	protected function beforeAction() {}
+	protected function afterAction() {}
 }
 
 // ===========

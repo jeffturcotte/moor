@@ -10,38 +10,32 @@ A URL Routing/Linking/Controller library for PHP 5.
 - URL Routing
 	- Request Parameters
 	- Callback Parameters
+	- Valid Callbacks
 - Link Generation
-- Active Callback (& Friends)
 - Path Generation
+- Active Callback Helpers
 - 404 Callback
+- Triggers
 - Debugging
-- Built-In Controllers (DOCS COMING SOON)
-	- MoorAbstractController 
-	- MoorActionController 
-		- Action Permissions 
-		- Magic Methods 
-		- Location Helpers 
-		- Path Helpers 
+- Built-In Controllers
+- Tips
+	- Linking Helper
+- Issues & Errata
 - Credits
-
-## Warning
-
-Docs under review/construction/edits. Beware!
 
 ## Introduction
 
 Moor is a URL Routing/Linking/Controller library for PHP 5. It performs 2 actions very well: routing URLs to callbacks and generating URLs for callbacks.
 
-While an understanding of MVC will help your grasp Moor's role in your application, Moor is not an MVC framework. It's a library that only handles routing and linking. Use your favorite ORM for your Models and your favorite templating system for your Views. If you don't need or want these pieces, write cool stuff without them.
+While an understanding of MVC will help your grasp Moor's role in your application, Moor is not an MVC framework. It's a library that only helps with routing, linking, and organizing your controller logic. Use your favorite ORM for your Models and your favorite templating system for your Views. If you don't need or want these pieces, write cool stuff without them.
 
-This is currently beta software. It is released under the MIT license.
+*This is currently beta software.* It is released under the MIT license.
 
 ## Concepts To Understand
 
 If you don't have a basic understanding of the following concepts/techniques, you will be at a severe disadvantage. Please read up if you have to.
 
-*MVC*
-http://en.wikipedia.org/wiki/Model-view-controller
+[Wikipedia MVC Page](http://en.wikipedia.org/wiki/Model-view-controller)
 	
 ## Hello World (PHP 5.2)
 
@@ -179,12 +173,29 @@ The only rule is that you must use have the same callback params in the URL and 
 	Moor::route('/@namespace/@class/:id/@method', '@class(uc)::@method(lc)');
 	// Mismatched callback params! Will throw a MoorProgrammerException
 
+### Valid Callbacks
+
+For security reasons, some callbacks are not valid. Here are the requirements for callbacks:
+
+__Closures__
+
+- No requirements, all closure callbacks are valid
+
+__Functions__
+
+- Cannot be *fully* dynamic: '@function' or '@namespace\@function', as opposed to the valid: 'totally\_static\_func', 'MyNamespace\@function' or 'functions\_@name'
+
+__Methods__
+
+- Class must be a subclass of MoorAbstractController
+- Method name cannot start with \_\_ (to protect magic methods)
+- Method must have public visibility
 
 ## Link Generation
 
 Moor can generate links to any callback defined in a route. Let's say we define the following routes.
 
-	Moor::route('/:name', 'home', function(){
+	Moor::route('/:name(u)', 'home', function(){
 		'Welcome, ' . $_GET['name'];
 	});
 
@@ -199,10 +210,14 @@ Note the formatting rules in the URL definition callback params. Just as we defi
 
 Typically, we'll always want underscore format for the URL callback params, so we can drop that formatting rule altogether as it's the default. 
 
+	Moor::route('/:name)', 'home', function(){
+		'Welcome, ' . $_GET['name'];
+	});
+
 	Moor::
 		route('/@class/:id/@action', '@class(uc)::@method(lc)')->
+		route('/@class/:id.:format([a-z]{1,4})', @class(uc)::read')->
 		route('/@class/:id', '@class(uc)::read')->
-		route('/@class/:id.:format([a-z]{1,3})', @class(uc)::read')->
 		route('/@class', '@class(uc)::index')->
 		run();
 
@@ -249,9 +264,27 @@ This can also be used on the namespace level:
 
 We can only use linkTo once Moor's router has been started with run(). If the route cannot be found, Moor::linkTo will throw a MoorProgrammerException. Currently, Moor considers a callback valid if it matches a route and does not determine if the callback actually exists.
 
-## Active Callback (& Friends)
+## Path Generation
 
-Moor defines a few methods to help get information about the current active/running callback. If the callback you've defined in your route doesn't contain one of these pieces, that pieces' function will simply return NULL.
+Typically, it's convenient to map your callbacks to file paths in order to pull in associated files, such as views. We can generate a path with Moor::pathTo(). This method takes the same argument style as Moor::linkTo(), minus the request params.
+
+	Moor::pathTo('User::edit');
+	// returns /user/edit
+	
+	Moor::pathTo('Dashboard\Groups::add');
+	// returns /dashboard/groups/add
+	
+	Moor::pathTo('Admin_StoreItems::delete');
+	// returns /admin/store_items/delete
+	
+	Moor::pathTo('*::index');
+	// returns path to /ACTIVE-CLASS/index
+	
+Or, as a convenience, there are two active path methods to generate paths for running callbacks which are described in the next section.
+
+## Active Callback Helpers
+
+Moor defines some methods to help get information about the current active/running callback. If the callback you've defined in your route doesn't contain one of these pieces, that pieces' function will simply return NULL.
 
 	Moor::getActiveCallback() 
 	// returns the currently running callback in it's full form
@@ -273,28 +306,13 @@ Moor defines a few methods to help get information about the current active/runn
 
 	Moor::getActiveShortMethod()
 	// returns the method name (minus namespace & class) of the currently running callback
-
-## Path Generation
-
-Typically, it's convenient to map your callbacks to file paths in order to pull in associated files. Such as views. We can generate a path with Moor::pathTo(). This method takes the same argument style as Moor::linkTo(), minus the request params.
-
-	Moor::pathTo('User::edit');
-	// returns /user/edit
 	
-	Moor::pathTo('Dashboard\Groups::add');
-	// returns /dashboard/groups/add
-	
-	Moor::pathTo('Admin_StoreItems::delete');
-	// returns /admin/store_items/delete
-	
-Or, as a convenience, there are two active path methods to generate paths for running callbacks:
-
 	Moor::getActivePath();
-	// returns the path for the currently running callback
+	// returns the generated path for the currently running callback
 	
 	Moor::getActiveClassPath();
-	// returns the path for the currently running callback's class
-	
+	// returns the generated path for the currently running callback's class
+
 ## 404 Callback
 
 There is a default callback that is run when a route cannot be found: Moor::routeNotFoundCallback. This can be changed with:
@@ -302,6 +320,12 @@ There is a default callback that is run when a route cannot be found: Moor::rout
 	Moor::setNotFoundCallback('Your::own404Callback');
 	
 Please note that the default not found callback can optionally display debugging information, so if you still wanted debug messages, you would need to add this functionality to your custom callback.
+
+## Triggers
+
+While the router is running:
+	- Trigger the 404 callback with Moor::triggerNotFound().
+	- Skip the current active route and continue routing with Moor::triggerContinue().
 
 ## Debugging
 
@@ -325,14 +349,95 @@ By default, Moor will use the the value in $\_SERVER['HTTP_HOST'] for the unique
 
 	Moor::setCacheKey('my_custom_apc_key');
 	
-Note: Enabling caching is not recommended unless there is a noticeable slowdown. You will most likely not notice any performance gain unless you have a very large amount of routes and are linking to a very large set of unique callbacks on a single page. Other than a few rare edge cases, if this is how you're application is structured, you're most likely doing it wrong. :-)
+Caching is not recommended unless there is a noticeable slowdown. You will most likely not notice any performance gain unless you have a very large amount of routes and are linking to a very large set of unique callbacks on a single page. Other than a few rare edge cases, if this is how your overall application is structured, you're most likely doing it wrong.
 	
 ## Built-In Controllers
 
-Coming Soon
+Moor currently comes with two built in controller classes. MoorAbstractController and MoorActionController. If neither suit your needs, you're encouraged to extend MoorAbstractController and create your own controller classes.
+
+MoorAbstractController is as simple as it gets:
+
+	class MoorAbstractController {
+		public function __construct() {
+			call_user_func(array(
+				$this, Moor::getActiveShortMethod()
+			));
+		}
+	}
+	
+	// When a Method callback is matched, where the class extends MoorAbstractController, Moor instantiates the extending class where __construct calls the instance method. 
+	
+MoorActionController is built on top of MoorAbstractController, but has some special features that set it apart and make it more appealing for writing an application. The built in helper methods are:
+
+	protected function beforeAction() { ...
+	// Will be called before all action methods	
+		
+	protected function afterAction() { ...
+	// Will be called after all action method (and exception handlers)	
+	
+	protected function catch{EXCEPTION_NAME}($e) { ...
+	// Will catch the specified exception throw within the action method
+	// Accepts one argument: the exception instance.
+		
+Here is an example of these methods in action:
+
+	class Users extends MoorActionController() {
+		
+		protected function beforeAction() {
+			// Called before all action methods
+		}
+		
+		public function myAction() {
+			// My action logic is here after __before
+			$this-x = $this->myHelper();
+		}
+		
+		public function myUnstableAction() {
+			throw new FrameworkException($e);
+		}
+		
+		protected function catchFrameworkException($e) {
+			// Will catch FrameworkException (or a subclass of) then continue to afterAction
+		}
+		
+		protected function catchException($e) {
+			// Will catch Exception (or a subclass of), then continue to afterAction
+		}
+		
+		protected function afterAction() {
+			// Called after the action method (and possibly an exception handler.)
+		}
+		
+		
+		// We can use the valid callback rules to our advantage.
+		// Below is a helper method that is not accessible through 
+		// any URL because its visibility is not public. Secure
+		// anything that's meant for internal use only.
+		
+		protected function myHelper() {
+			return 'help';
+		}
+	}
+
+## Tips
+
+### Linking Helper
+
+You'll probably not want to write Moor::linkTo() everywhere, so it's usually nice to write a global function . I typically use link_to() or l().
+
+	function link_to() {
+		$args = func_get_args();
+		return call_user_func_array(
+			'Moor::linkTo', $args
+		);
+	}
+
+## Issues & Errata
+
+Please submit and issues or errata through the [issue tracker on GitHub](http://github.com/jeffturcotte/moor/issues). Your help is appreciated.
 
 ## Credits
 
-Designed and programmed by Jeff Turcotte. jeff.turcotte@gmail.com
+Designed and programmed by Jeff Turcotte.
 
 (c) 2010
