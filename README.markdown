@@ -365,7 +365,9 @@ MoorAbstractController is as simple as it gets:
 		}
 	}
 	
-	// When a Method callback is matched, where the class extends MoorAbstractController, Moor instantiates the extending class where __construct calls the instance method. 
+	// When a method callback is matched, and the class of that callback
+	// is a subclass of MoorAbstractController, Moor instantiates the 
+	// extending class in which __construct calls the public instance method. 
 	
 MoorActionController is built on top of MoorAbstractController, but has some special features that set it apart and make it more appealing for writing an application. The built in helper methods are:
 
