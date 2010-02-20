@@ -811,52 +811,86 @@ class Moor {
 	/**
 	 * Extracts callback params (@*) from a url string
 	 *
-	 * @param string $url_or_callback_string  A url or callback string from route()
+	 * @param string $string  A url or callback string from route()
 	 * @return array  An array of callback params in stdObject form
 	 */
-	private static function &extractCallbackParams($url_or_callback_string) 
+	private static function &extractCallbackParams($string) 
 	{
-		$callback_params = array();
-
+		$callback_params = array();		
+		
 		preg_match_all(
-			'/(?P<search>@(?P<param>[A-Za-z_][A-Za-z0-9_]*) (\((?P<format>[^\)]*)\))?) /x',
-			$url_or_callback_string, 
-			$matches 
+			'/{?(?P<param>@
+				(?P<name>[A-Za-z]([A-Za-z]|(_(?!@)))*)
+				(\((?P<format>[A_Z0-9a-z-_]+)\))?
+			)}?/x', 
+			$string, 
+			$matches
 		);
 
-		foreach($matches['param'] as $key => $name) {
-			$callback_param = (object) $name;
-			$callback_param->search = $matches['search'][$key];
-			$callback_param->name  = '_Moor_'.$name;
+		$validator = $string;
 
-			// default format is underscore
-			if (!$format = $matches['format'][$key]) {
-				$format = 'u';
-			}
-
+		foreach($matches['param'] as $i => $param) {
+			$name   = '_Moor_'.$matches['name'][$i];
+			
+			// if no format, default format to u
+			$format = $matches['format'][$i] ? $matches['format'][$i] : 'u';
+			
 			switch ($format) {
+				// UpperCamelCaseFormat
 				case "uc":
-					$callback_param->pattern = '[A-Za-z][0-9A-Za-z]*';
-					$callback_param->formatter = __CLASS__.'::upperCamelize';
-				break;
+					$pattern = '[A-Z][0-9A-Za-z]*';
+					$formatter = __CLASS__.'::upperCamelize';
+					break;
+				// lowerCamelCaseFormat
 				case "lc":
-					$callback_param->pattern = '[A-Za-z][0-9A-Za-z]*';
-					$callback_param->formatter = __CLASS__.'::lowerCamelize';
-				break;
+					$pattern = '[a-z][0-9A-Za-z]*';
+					$formatter = __CLASS__.'::lowerCamelize';
+					break;
+				// underscore_format
 				case "u":
-					$callback_param->pattern = '[a-z_][0-9a-z_]*';
-					$callback_param->formatter = __CLASS__.'::underscorize';
-				break;
+					$pattern = '[a-z_][0-9a-z_]*';
+					$formatter = __CLASS__.'::underscorize';
+					break;
+				// invalid format
 				default:
 					throw new MoorProgrammerException(
-						$url_or_callback_string . ' contains invalid formatting rule: ' . $format
+						$string . ' contains invalid formatting rule: ' . $format
 					);
 			}
 
-			$callback_param->replacement = 
-				"(?P<{$callback_param->name}>{$callback_param->pattern})";
-				
-			$callback_params[$callback_param->scalar] = $callback_param;
+			$callback_param              = (object) $name;
+			$callback_param->search      = $param;
+			$callback_param->name        = $name;
+			$callback_param->pattern     = $pattern;
+			$callback_param->formatter   = $formatter;
+			$callback_param->replacement = "(?P<{$name}>{$pattern})";
+			$callback_params[$name]      = $callback_param;
+						
+			$validator = str_replace($param, '%@'.$format.'%', $validator);
+		}
+
+		// check for invalid callback param juxtapositions 
+		// that can't be used for routing/linking
+		$invalid_patterns = array();
+
+		$invalid_patterns['/(%@u%%@lc%)/'] = 
+			'an underscore param directly before lowerCamelCase param';
+
+		$invalid_patterns['/(((%@lc%)|(%@uc%))%@u%)/'] = 
+			'an underscore param directly after UpperCamelCase param or lowerCamelCase param';
+
+		$invalid_patterns['/(%@u%_?%@u%)/'] = 
+			'directly juxtaposed underscore params or underscore params joined by an underscore character';
+
+		$invalid_patterns['/((%@lc%%@uc%)|(%@uc%%@lc%))/'] = 
+			'directly juxtaposed lowerCamelCase and/or UpperCamelCase params';
+
+		foreach($invalid_patterns as $pattern => $message) {
+			if (preg_match($pattern, $validator)) {
+				throw new MoorProgrammerException(
+					"Unroutable/Unlinkable callback params. {$string} contains {$message}"
+				);
+			}
 		}
 
 		return $callback_params;
