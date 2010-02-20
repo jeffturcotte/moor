@@ -421,7 +421,7 @@ Here is an example of these methods in action:
 		}
 	}
 
-## Tips
+## Tips & Extras
 
 ### Linking Helper
 
@@ -433,6 +433,28 @@ You'll probably not want to write Moor::linkTo() everywhere, so it's usually nic
 			'Moor::linkTo', $args
 		);
 	}
+	
+### Simple Views
+
+Views (or any kind of templates) aren't built in to Moor, but that doesn't mean they aren't an important part of your app. Powerful templating engines are fine, but I prefer keeping things simple. PHP has free templating, so the easiest way to implement a template/view system is to simply include a file. This pattern has worked well for me .
+
+		define('PATH_TO_VIEWS', '/path/to/your/views');
+
+		function render($callback, $controller_instance=NULL, $format='html') {
+			$_moor_view_file = PATH_TO_VIEWS . Moor::pathTo($callback) . ".{$format}.php",
+
+			if (!file_exists($_moor_view_file)) { return; }
+
+			unset($path_to_callback, $controller_instance, $format);
+
+			if (is_object($controller_instance)) {
+				extract(get_object_vars($controller_instance), EXTR_REFS);
+			}
+
+			include $moor_view_file;
+		}
+
+	Usually, this is enough, and it can be called from the afterMethod
 
 ## Issues & Errata
 
