@@ -205,11 +205,9 @@ class Moor {
 		}
 
 		if (!isset(self::$cache->link_to[$key])) {
-			
 			//self::$cache_for_linkTo[$key] = FALSE;
-
 			$best_route = NULL;
-			$param_names = preg_split('/(?<=[^:])(\s*:)(?!:)/', $callback_string);
+			$param_names = preg_split('/(\s+:)|(\s+)|((?<=[^:]):(?!:))/', $callback_string);
 			$callback_string = array_shift($param_names);
 			$param_names_flipped = array_flip($param_names);
 			$callback_params = array();
@@ -590,7 +588,7 @@ class Moor {
 	 * @return void
 	 */
 	public static function triggerNotFound() {
-		throw new NotFoundException();
+		throw new MoorNotFoundException();
 	}
 
 	// ===============
