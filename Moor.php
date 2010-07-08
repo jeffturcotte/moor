@@ -2,8 +2,9 @@
 /**
  * Moor is a URL Routing/Linking/Controller library for PHP 5
  *
- * @copyright  Copyright (c) 2010 Jeff Turcotte
+ * @copyright  Copyright (c) 2010 Jeff Turcotte, others
  * @author     Jeff Turcotte [jt] <jeff.turcotte@gmail.com>
+ * @author     Will Bond [wb] <will@flourishlib.com>
  * @license    MIT (see LICENSE or bottom of this file)
  * @package    Moor
  * @link       http://github.com/jeffturcotte/moor
@@ -207,7 +208,7 @@ class Moor {
 		if (!isset(self::$cache->link_to[$key])) {
 			//self::$cache_for_linkTo[$key] = FALSE;
 			$best_route = NULL;
-			$param_names = preg_split('/(\s+:)|(\s+)|((?<=[^:]):(?!:))/', $callback_string);
+			$param_names = preg_split('/(\s+:)|(\s+)|((?<!:):(?!:))/', $callback_string);
 			$callback_string = array_shift($param_names);
 			$param_names_flipped = array_flip($param_names);
 			$callback_params = array();
@@ -274,7 +275,7 @@ class Moor {
 					$url = str_replace(
 						$callback_param->search,
 						call_user_func_array(
-							$callback_param->formatter,
+							self::compat($callback_param->formatter),
 							array($callback_params[$callback_param->name])
 						),
 						$url
@@ -533,7 +534,7 @@ class Moor {
 		self::$messages[] = 'No Valid Matches Found. Running Not Found callback: ' . self::$not_found_callback;
 
 		self::saveCache();
-		call_user_func(self::$not_found_callback);
+		call_user_func(self::compat(self::$not_found_callback));
 		exit();
 	}
 	
@@ -724,6 +725,21 @@ class Moor {
 	}
 	
 	/**
+	 * Provides a compatibility layer for PHP 5.2 style static callbacks to
+	 * work with PHP 5.1.
+	 * 
+	 * @param callback $callback  The callback to make compatible
+	 * @return callback  A callback that is compatibile with PHP 5.1
+	 */
+	private static function compat($callback)
+	{
+		if (is_string($callback) && strpos($callback, '::') !== FALSE) {
+			$callback = explode('::', $callback);
+		}
+		return $callback;
+	}
+	
+	/**
 	 * Dispatch a callback
 	 * 
 	 * @param object $route a route stdObject
@@ -756,11 +772,11 @@ class Moor {
 		if ($route->function instanceof Closure) {
 			self::$active_function = $callback_string;
 			self::$messages[] = 'Calling assigned closure';
-			call_user_func($route->function);
+			call_user_func(self::compat($route->function));
 			exit();
 	
 		// dispatch function
-		} else if (function_exists($callback_string)) {
+		} else if (function_exists(self::compat($callback_string))) {
 			// disallow dangerous functions
 			if (preg_match('/^[\*_\\\\]+$/', $route->callback->finder)) {
 				self::$messages[] = 'Skipping callback ' . $callback . ': Callback definition is dangerous.';
@@ -775,7 +791,7 @@ class Moor {
 			self::$active_function  = $callback_string;
 
 			self::$messages[] = 'Calling function: ' . $callback_string;
-			call_user_func($callback_string);
+			call_user_func(self::compat($callback_string));
 			exit();
 
 		// dispatch method
@@ -793,11 +809,11 @@ class Moor {
 			
 			if ($method->isStatic()) {
 				self::$messages[] = 'Calling static method: ' . $callback_string;
-				call_user_func($callback_string);
+				call_user_func(self::compat($callback_string));
 				exit();
 			} else {
 				self::$messages[] = 'Instantiating class for ' . $callback_string;
- 				new $class();
+				new $class();
 				exit();
 			}
 		}
@@ -992,7 +1008,7 @@ class Moor {
 
 		foreach($callback->params as $name => $param) {
 			if (isset($_GET[$param->name])) {
-				$replacement = call_user_func_array($param->formatter, array($_GET[$param->name]));
+				$replacement = call_user_func_array(self::compat($param->formatter), array($_GET[$param->name]));
 				$callback_string = str_replace("{:{$param->name}}",	$replacement, $callback_string);
 			}
 		}
@@ -1311,7 +1327,7 @@ require 'MoorActionController.php';
 
 // Moor - a routing, linking and controller library for PHP5
 // 
-// Copyright (c) 2010 Jeff Turcotte
+// Copyright (c) 2010 Jeff Turcotte, others
 // 
 // Permission is hereby granted, free of charge, to any person
 // obtaining a copy of this software and associated documentation
