@@ -392,7 +392,7 @@ class Moor {
 	 *
 	 * @return string
 	 */
-	public static function getActiveNamepsace()
+	public static function getActiveNamespace()
 	{
 		return self::$active_namespace;
 	}
