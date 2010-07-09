@@ -798,7 +798,10 @@ class Moor {
 		} else {
 			self::validateMethodCallback($callback_string);
 			$method = new ReflectionMethod($callback_string);
-			$class  = $method->getDeclaringClass()->getName();
+
+			$class = self::compat($callback_string);
+			$class = $class[0];
+
 			$parsed_class = self::parseClass($class);
 			
 			self::$active_method = $callback_string;
@@ -1108,12 +1111,15 @@ class Moor {
 	 * @return array  An array of the namespace and short class name
 	 */
 	private static function parseClass($class) {
+		$namespace = NULL;
+		$short_class = $class;
+		
 		if (strpos($class, '\\') !== FALSE) {
-			preg_match('/^(?P<namespace>.*)\\\\(?P<short_name>)[a-zA-Z][a-zA-Z0-9]*)$/', $class, $matches);
+			preg_match('/(?P<namespace>.*)\\\\(?P<short_class>)[a-zA-Z][a-zA-Z0-9]*)$/', $class, $matches);
 			$namespace  = (isset($matches['namespace']))  ? $matches['namespace']  : NULL;
 			$short_class = (isset($matches['short_class'])) ? $matches['short_class'] : NULL;
-		} else {
-			preg_match('/^(?P<namespace>.*)_(?P<short_name>[A-Z][A-Za-z0-9]*)$/', $class, $matches);
+		} else if (strpos($class, '_') !== FALSE) {
+			preg_match('/(?P<namespace>.*)_(?P<short_class>[A-Z][A-Za-z0-9]*)$/', $class, $matches);
 			$namespace  = (isset($matches['namespace']))  ? $matches['namespace']  : NULL;
 			$short_class = (isset($matches['short_class'])) ? $matches['short_class'] : NULL;
 		}
