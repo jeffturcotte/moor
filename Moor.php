@@ -776,7 +776,7 @@ class Moor {
 			exit();
 	
 		// dispatch function
-		} else if (function_exists(self::compat($callback_string))) {
+		} else if (function_exists($callback_string)) {
 			// disallow dangerous functions
 			if (preg_match('/^[\*_\\\\]+$/', $route->callback->finder)) {
 				self::$messages[] = 'Skipping callback ' . $callback . ': Callback definition is dangerous.';
