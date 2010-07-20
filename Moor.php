@@ -193,25 +193,26 @@ class Moor {
 	 * @param  string $params          The GET params to send
 	 * @return string The URL
 	 */
-	public static function linkTo($key) {
+	public static function linkTo($key)
+	{
 		if (!self::$running) {
 			throw new MoorProgrammerException(
 				'linkTo() cannot be used until routing has been started with run().'
 			);
 		}
-
+		
 		$param_values    = func_get_args();
 		$callback_string = array_shift($param_values);
 		$callback_string = trim($callback_string);
-
+		
 		if (strpos($callback_string, '*::') === 0 && self::getActiveClass()) {
 			$callback_string = self::getActiveClass() . substr($callback_string, 1);
 		} else if (strpos($callback_string, '*\\') === 0 || preg_match('/^\*_[A-Z][A-Za-z0-9]*::/', $callback_string)) {
 			if (self::getActiveNamespace()) {
-				$callback_string = self::getActiveNamespace() . substr($callback_string, 1);	
+				$callback_string = self::getActiveNamespace() . substr($callback_string, 1);
 			}
 		}
-
+		
 		if (!isset(self::$cache->link_to[$key])) {
 			//self::$cache_for_linkTo[$key] = FALSE;
 			$best_route = NULL;
@@ -224,32 +225,32 @@ class Moor {
 			$top_accu = NULL;
 			$low_diff = NULL;
 			$top_sect = NULL;
-		
+			
 			if (!$best_route) {
 				foreach(self::$routes as $route) {
 					$callback = $route->callback;
-			
+					
 					if (!preg_match($callback->pattern, $callback_string, $callback_param_matches)) {
 						continue;
 					}
-				
+					
 					foreach($callback_param_matches as $name => $param_match) {
 						if (is_string($name)) { $callback_params[$name] = $param_match; }
 					}
-								
+					
 					$dist = levenshtein($callback->finder, $callback_string);
 					$accu = strrpos($callback->finder, '*');
 					$diff = abs(count($route->url->request_params) - count($param_names));
 					$sect = count(array_intersect_key(array_flip(array_keys($route->url->request_params)), $param_names_flipped));
-
+					
 					$is_best = (
-						$best_route === NULL || 
+						$best_route === NULL ||
 						$low_dist > $dist ||
 						$low_dist == $dist && $top_accu < $accu ||
 						$low_dist == $dist && $top_accu == $accu && $top_sect < $sect ||
 						$low_dist == $dist && $top_accu == $accu && $top_sect <= $sect && $top_diff > $diff 
 					);
-				
+					
 					if ($is_best) {
 						$best_route = $route;
 						$low_dist = $dist;
@@ -263,7 +264,7 @@ class Moor {
 			if (!$best_route) {
 				throw new MoorProgrammerException('No link could be found for the callback ' . $callback_string);
 			}
-		
+			
 			if ($best_route) {
 				$cache = (object) $best_route->url->shorthand;
 				$cache->param_names = $param_names;
@@ -275,7 +276,7 @@ class Moor {
 				$cache->excluded_param_names = array_flip(array_diff(
 					$param_names, array_keys($best_route->url->request_params)
 				));
-
+				
 				$url = $best_route->url->shorthand;
 				
 				foreach($best_route->url->callback_params as $name => $callback_param) {
@@ -294,32 +295,32 @@ class Moor {
 				self::$cache->link_to[$key] = $cache;
 			}
 		}
-
+		
 		$cache =& self::$cache->link_to[$key];
-
+		
 		if ($cache == FALSE) {
 			return '#';
 		}
-
+		
 		$url = $cache->url;
-
+		
 		$params = array();
 		if (!empty($cache->param_names)) {
 			$params = array_combine(
-				$cache->param_names, 
+				$cache->param_names,
 				$param_values
 			);
 		}
-
+		
 		$included_params = array_intersect_key($params, $cache->included_param_names);
 		$excluded_params = array_intersect_key($params, $cache->excluded_param_names);
 		
 		foreach($included_params as $name => $value) {
 			$url = str_replace(':'.$name, $value, $url);
 		}
-
-		if (!empty($excluded_params)) { 
-			$url .= '?' . http_build_query($excluded_params); 
+		
+		if (!empty($excluded_params)) {
+			$url .= '?' . http_build_query($excluded_params);
 		}
 		
 		return $url;
@@ -439,15 +440,16 @@ class Moor {
 	 * Get the path to the supplied callback
 	 *
 	 * @param string $callback 
-	 * @param string $directory_separator 
+	 * @param string $directory_separator
 	 * @return void
 	 */
-	public static function pathTo($callback, $directory_separator=NULL) {
+	public static function pathTo($callback, $directory_separator=NULL)
+	{
 		$string = $callback;
 		
 		if (strpos('*::', $callback) === 0) {
 			$string = self::getActiveClass() . substr($callback, 1);
-		} 
+		}
 		
 		if (strpos('*\\', $callback) === 0 || preg_match('/^\*_[A-Z][A-Za-z0-9]*::/', $callback)) {
 			$string = self::getActiveNamespace() . substr($callback, 1);
@@ -464,7 +466,7 @@ class Moor {
 	 * @param  closure         $function        An optional closure, named by the previous argument (for linking)
 	 * @return object The Moor instance for chaining
 	 */
-	public static function route($url_string, $callback_string, $function=NULL) 
+	public static function route($url_string, $callback_string, $function=NULL)
 	{
 		if (self::$running == TRUE) {
 			throw new MoorProgrammerException(
@@ -478,14 +480,14 @@ class Moor {
 			$function = $callback_string;
 			$callback_string = '';
 		}
-
+		
 		$route = (object) 'uncompiled_route';
 		$route->url      = $url_string;
 		$route->callback = $callback_string;
 		$route->function = $function;
-
+		
 		array_push(self::$uncompiled_routes, $route);
-
+		
 		return self::getInstance();
 	}
 
@@ -502,19 +504,19 @@ class Moor {
 			self::clearCache();
 		}
 			
-		self::$running = TRUE;	
+		self::$running = TRUE;
 		self::$request_path = preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']);
-
+		
 		self::compile();
 		
 		if (isset(self::$cache->matched_routes[self::$request_path])) {
 			self::dispatchRoute(self::$cache->matched_routes[self::$request_path], FALSE, FALSE);
 		}
-
+		
 		$old_GET = $_GET;
 		$_GET = array();
 		
-		foreach(self::$routes as $route):
+		foreach(self::$routes as $route) {
 			self::$cache->matched_routes[self::$request_path] = $route;
 			
 			self::$active_callback = NULL;
@@ -526,7 +528,7 @@ class Moor {
 			self::$active_function = NULL;
 			
 			$_GET = $old_GET;
-
+			
 			try {
 				self::dispatchRoute($route);
 			} catch (MoorContinueException $e) {
@@ -538,10 +540,10 @@ class Moor {
 			}
 			
 			unset(self::$cache->matched_routes[self::$request_path]);
-		endforeach;
-
+		}
+		
 		self::$messages[] = 'No Valid Matches Found. Running Not Found callback: ' . self::$not_found_callback;
-
+		
 		self::saveCache();
 		call_user_func(self::compat(self::$not_found_callback));
 		exit();
@@ -568,7 +570,7 @@ class Moor {
 	public static function setRequestParamPattern($pattern)
 	{
 		self::$default_request_param_pattern = $pattern;
-		return self::getInstance();		
+		return self::getInstance();
 	}
 
 	/**
@@ -600,7 +602,8 @@ class Moor {
 	 *
 	 * @return void
 	 */
-	public static function triggerContinue() {
+	public static function triggerContinue()
+	{
 		throw new MoorContinueException();
 	}
 	
@@ -609,7 +612,8 @@ class Moor {
 	 *
 	 * @return void
 	 */
-	public static function triggerNotFound() {
+	public static function triggerNotFound()
+	{
 		throw new MoorNotFoundException();
 	}
 
@@ -658,24 +662,24 @@ class Moor {
 	{
 		$upper = (int) $upper;
 		$key   = "{$upper}/{$original}";
-
+		
 		if (isset(self::$cache->camelize[$key])) {
-			return self::$cache->camelize[$key];		
+			return self::$cache->camelize[$key];
 		}
-
+		
 		$string = $original;
-
+		
 		// Check to make sure this is not already camel case
 		if (strpos($string, '_') === FALSE) {
 			if ($upper) { 
-				$string = strtoupper($string[0]) . substr($string, 1); 
+				$string = strtoupper($string[0]) . substr($string, 1);
 			}
-
+			
 		// Handle underscore notation
 		} else {
 			$string = strtolower($string);
 			if ($upper) { $string = strtoupper($string[0]) . substr($string, 1); }
-			$string = preg_replace('/(_([a-z0-9]))/e', 'strtoupper("\2")', $string);		
+			$string = preg_replace('/(_([a-z0-9]))/e', 'strtoupper("\2")', $string);
 		}
 		
 		self::$cache->camelize[$key] =& $string;
@@ -695,26 +699,26 @@ class Moor {
 		}
 		
 		foreach(self::$uncompiled_routes as $uncompiled_route) {
-
+			
 			$route = (object) 'route';
-
+			
 			$route->url      = self::parseUrl($uncompiled_route->url);
 			$route->callback = self::parseCallback($uncompiled_route->callback);
 			$route->function = $uncompiled_route->function;
-
+			
 			// validate that the url and callback use the same callback params
 			
 			$diff = array_merge(
 				array_diff_key($route->callback->params, $route->url->callback_params),
 				array_diff_key($route->url->callback_params, $route->callback->params)
 			);
-
+			
 			if (count($diff)) {
 				throw new MoorProgrammerException(
 					'Route: ' . $route->url->scalar . ', url and callback have different callback params: ' . join(',', array_keys($diff))
 				);
 			}
-
+			
 			array_push(self::$routes, $route);
 		}
 		
@@ -774,14 +778,14 @@ class Moor {
 		
 		self::$messages[] = 'Match. Request path ' . self::$request_path . ' matched URL definition "' . $route->url->scalar . '"';
 		
-		self::$cache->matched_routes[self::$request_path] = $route; 
+		self::$cache->matched_routes[self::$request_path] = $route;
 		self::saveCache();
-
-		foreach($matches as $name => $param):
+		
+		foreach($matches as $name => $param) {
 			if (is_string($name)) {
 				$_GET[$name] = $param;
 			}
-		endforeach;
+		}
 		
 		$callback_string = self::injectParamsIntoCallback($route->callback);
 		
@@ -795,7 +799,7 @@ class Moor {
 			self::$messages[] = 'Calling assigned closure';
 			call_user_func(self::compat($route->function));
 			exit();
-	
+			
 		// dispatch function
 		} else if (function_exists($callback_string)) {
 			// disallow dangerous functions
@@ -803,26 +807,26 @@ class Moor {
 				self::$messages[] = 'Skipping callback ' . $callback_string . ': Callback definition is dangerous.';
 				self::triggerContinue();
 			}
-
+			
 			$function = new ReflectionFunction($callback_string);
-
+			
 			if (method_exists($function, 'getNamespaceName')) {
 				self::$active_namespace = $function->getNamespaceName();
 			}
 			self::$active_function  = $callback_string;
-
+			
 			self::$messages[] = 'Calling function: ' . $callback_string;
 			call_user_func($callback_string);
 			exit();
-
+			
 		// dispatch method
 		} else {
 			self::validateMethodCallback($callback_string);
 			$method = new ReflectionMethod($callback_string);
-
+			
 			$class = self::compat($callback_string);
 			$class = $class[0];
-
+			
 			$parsed_class = self::parseClass($class);
 			
 			self::$active_method = $callback_string;
@@ -841,7 +845,7 @@ class Moor {
 				exit();
 			}
 		}
-
+		
 		self::$messages[] = 'Skipping callback: ' . $callback_string . '. Not a valid method or function.';
 		self::triggerContinue();
 	}
@@ -854,19 +858,19 @@ class Moor {
 	 */
 	private static function &extractCallbackParams($string) 
 	{
-		$callback_params = array();		
+		$callback_params = array();
 		
 		preg_match_all(
 			'/{?(?P<param>@
 				(?P<name>[A-Za-z]([A-Za-z]|(_(?!@)))*)
 				(\((?P<format>[A_Z0-9a-z-_]+)\))?
-			)}?/x', 
-			$string, 
+			)}?/x',
+			$string,
 			$matches
 		);
-
+		
 		$validator = $string;
-
+		
 		foreach($matches['param'] as $i => $param) {
 			$name   = '_Moor_'.$matches['name'][$i];
 			
@@ -895,7 +899,7 @@ class Moor {
 						$string . ' contains invalid formatting rule: ' . $format
 					);
 			}
-
+			
 			$callback_param              = (object) $name;
 			$callback_param->search      = $param;
 			$callback_param->name        = $name;
@@ -906,23 +910,23 @@ class Moor {
 						
 			$validator = str_replace($param, '%@'.$format.'%', $validator);
 		}
-
+		
 		// check for invalid callback param juxtapositions 
 		// that can't be used for routing/linking
 		$invalid_patterns = array();
-
+		
 		$invalid_patterns['/(%@u%%@lc%)/'] = 
 			'an underscore param directly before lowerCamelCase param';
-
+		
 		$invalid_patterns['/(((%@lc%)|(%@uc%))%@u%)/'] = 
 			'an underscore param directly after UpperCamelCase param or lowerCamelCase param';
-
+		
 		$invalid_patterns['/(%@u%_?%@u%)/'] = 
 			'directly juxtaposed underscore params or underscore params joined by an underscore character';
-
+		
 		$invalid_patterns['/((%@lc%%@uc%)|(%@uc%%@lc%))/'] = 
 			'directly juxtaposed lowerCamelCase and/or UpperCamelCase params';
-
+		
 		foreach($invalid_patterns as $pattern => $message) {
 			if (preg_match($pattern, $validator)) {
 				throw new MoorProgrammerException(
@@ -930,7 +934,7 @@ class Moor {
 				);
 			}
 		}
-
+		
 		return $callback_params;
 	}
 
@@ -950,20 +954,20 @@ class Moor {
 			$matches, 
 			PREG_OFFSET_CAPTURE
 		);
-
+		
 		foreach($matches['param'] as $key => $name) {
 			$request_param = (object) $name[0];
 			$request_param->name = $name[0];
 			$request_param->search = ':'.$name[0];
 			$pattern = self::$default_request_param_pattern;
-
+			
 			if (isset($matches['pattern_offset'][$key][1])) {
 				// match nested/symmetric parens
-				$offset  = $matches['pattern_offset'][$key][1] + 1; 
+				$offset  = $matches['pattern_offset'][$key][1] + 1;
 				$length  = strlen($url_string);
 				$parens  = 1;
 				$pattern = '(';
-
+				
 				for ($i = $offset; $parens != 0 && $i < $length; $i++) {
 					switch($url_string[$i]) {
 						case '(': $parens++; break;
@@ -971,22 +975,22 @@ class Moor {
 					}
 					$pattern .= $url_string[$i];
 				}
-
+				
 				if ($parens != 0) {
 					throw new MoorProgrammerException(
 						'Supplied URL: ' . $url_string . ', contains mismatched request param pattern parenthesis'
 					);
 				}
-
-				$request_param->search .= $pattern;				
+				
+				$request_param->search .= $pattern;
 			}
-
+			
 			$request_param->replacement = 
 				"(?P<{$request_param->name}>{$pattern})";
-
+			
 			$request_params[$request_param->name] = $request_param;
 		}
-
+		
 		return $request_params;
 	}
 	
@@ -995,7 +999,7 @@ class Moor {
 	 *
 	 * @return string
 	 */
-	private static function getCacheKey() 
+	private static function getCacheKey()
 	{
 		if (!self::$cache_key) {
 			if (!isset($_SERVER['HTTP_HOST'])) {
@@ -1029,14 +1033,14 @@ class Moor {
 	private static function injectParamsIntoCallback($callback)
 	{
 		$callback_string = $callback->shorthand;
-
+		
 		foreach($callback->params as $name => $param) {
 			if (isset($_GET[$param->name])) {
 				$replacement = call_user_func_array(self::compat($param->formatter), array($_GET[$param->name]));
 				$callback_string = str_replace("{:{$param->name}}",	$replacement, $callback_string);
 			}
 		}
-
+		
 		return $callback_string;
 	}
 
@@ -1089,7 +1093,7 @@ class Moor {
 		$string = str_replace('::', $ds, $callback_string);
 		$string = str_replace('\\', $ds, $string);
 		$string = preg_replace('/_([A-Z])/', $ds.'$1', $string);
-
+		
 		$pieces = explode($ds, $string);
 		foreach($pieces as $n => $piece) {
 			$pieces[$n] = self::underscorize($piece);
@@ -1104,22 +1108,23 @@ class Moor {
 	 * @param  string $callback_string The callback
 	 * @return object The callback object
 	 */
-	private static function &parseCallback($callback_string) {
+	private static function &parseCallback($callback_string)
+	{
 		$callback = (object) trim($callback_string, '\\');
 		
 		$callback->pattern   = $callback->scalar;
 		$callback->finder    = $callback->scalar;
 		$callback->shorthand = $callback->scalar;
 		$callback->params    = self::extractCallbackParams($callback_string);
-
+		
 		foreach($callback->params as $param) {
 			$callback->pattern   = str_replace($param->search, $param->replacement, $callback->pattern);
 			$callback->finder    = str_replace($param->search, '*', $callback->finder);
 			$callback->shorthand = str_replace($param->search, '{:'.$param->name.'}', $callback->shorthand);
 		}
-
+		
 		$callback->pattern = "/^" . str_replace('\\', '\\\\', $callback->pattern) . "$/";
-
+		
 		return $callback;
 	}
 	
@@ -1131,7 +1136,8 @@ class Moor {
 	 * @param string class  The class to parse
 	 * @return array  An array of the namespace and short class name
 	 */
-	private static function parseClass($class) {
+	private static function parseClass($class)
+	{
 		$namespace = NULL;
 		$short_class = $class;
 		
@@ -1157,17 +1163,18 @@ class Moor {
 	 * @param  string $url_string    The URL string (either shorthand or a regular expression)
 	 * @return object The URL object
 	 */
-	private static function &parseUrl($url_string) {
-		$url = (object) $url_string;		
+	private static function &parseUrl($url_string)
+	{
+		$url = (object) $url_string;
 		$url->shorthand = trim($url_string);
 		$url->pattern   = $url->shorthand;
-
+		
 		// determine whether we should match from beginning
 		// to end of the url, or one or the other, or not at all
-
+		
 		$match_start = TRUE;
 		$match_end   = TRUE;
-
+		
 		if (isset($url->scalar[0]) && $url->scalar[0] == '*') {
 			$match_start = FALSE;
 			$url->shorthand = substr($url->shorthand, 1);
@@ -1176,24 +1183,24 @@ class Moor {
 			$match_end = FALSE;
 			$url->shorthand = substr($url->shorthand, 0, -1);
 		}
-
+		
 		// parse out callback params with formatting rules
-
+		
 		$url->callback_params = self::extractCallbackParams($url_string);
 		$url->request_params  = self::extractRequestParams($url_string);
-
+		
 		foreach($url->callback_params as $param) {
 			$url->pattern = str_replace($param->search, $param->replacement, $url->pattern);
 		}
-
+		
 		foreach($url->request_params as $param) {
 			$url->pattern   = str_replace($param->search, $param->replacement, $url->pattern);
 			$url->shorthand = str_replace($param->search, ':'.$param->name, $url->shorthand);
 		}
-
+		
 		$url->pattern = ($match_start ? '#^' : '#') . $url->pattern;
 		$url->pattern = $url->pattern . ($match_end ? '$#' : '#');
-
+		
 		return $url;
 	}
 
@@ -1202,11 +1209,12 @@ class Moor {
 	 *
 	 * @return void
 	 */
-	protected static function routeNotFoundCallback() {
+	protected static function routeNotFoundCallback()
+	{
 		header("HTTP/1.1 404 Not Found");
 		echo '<h1>NOT FOUND</h1>';
 		echo "\n\n";
-
+		
 		if (self::$debug) {
 			echo '<h2>Moor Debug</h2>';
 			echo "\n\n";
@@ -1260,31 +1268,31 @@ class Moor {
 	private static function &underscorize($string)
 	{
 		$key = $string;
-
+		
 		if (isset(self::$cache->underscorize[$key])) {
-			return self::$cache->underscorize[$key];		
+			return self::$cache->underscorize[$key];
 		}
-
+		
 		$original = $string;
 		$string = strtolower($string[0]) . substr($string, 1);
-
+		
 		// If the string is already underscore notation then leave it
 		if (strpos($string, '_') !== FALSE) {
-
+		
 		// Allow humanized string to be passed in
 		} elseif (strpos($string, ' ') !== FALSE) {
 			$string = strtolower(preg_replace('#\s+#', '_', $string));
-
+			
 		} else {
 			do {
 				$old_string = $string;
 				$string = preg_replace('/([a-zA-Z])([0-9])/', '\1_\2', $string);
 				$string = preg_replace('/([a-z0-9A-Z])([A-Z])/', '\1_\2', $string);
 			} while ($old_string != $string);
-
+			
 			$string = strtolower($string);
 		}
-
+		
 		self::$cache->underscorize[$key] =& $string;
 		return $string;
 	}
@@ -1306,7 +1314,8 @@ class Moor {
 	 * @param string $callback  the callback string
 	 * @return void
 	 */
-	private static function validateMethodCallback($callback) {
+	private static function validateMethodCallback($callback)
+	{
 		try {
 			$method = new ReflectionMethod($callback);
 			$class = $method->getDeclaringClass();
@@ -1319,12 +1328,12 @@ class Moor {
 			self::$messages[] = 'Continue. Class for method ' . $callback . '. isn\'t a subclass of MoorAbstractController.';
 			self::triggerContinue();
 		}
-
+		
 		if (strpos($method->getName(), '__') === 0) {
 			self::$messages[] = 'Continue. Method ' . $callback . ' looks like magic method.';
 			self::triggerContinue();
 		}
-
+		
 		if (!$method->isPublic()) {
 			self::$messages[] = 'Continue. Method ' . $callback . ' isn\'t public.';
 			self::triggerContinue();
