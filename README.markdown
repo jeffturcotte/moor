@@ -122,7 +122,7 @@ It's nice when you chain it on the end of some routes.
 		
 ### Request Parameters
 
-Parameters can be extracted from URLs by using a prepending a URL piece with a colon, i.e. :var_name. By default, they are matched by the pattern [0-9A-Za-z\_-]+.
+Parameters can be extracted from URLs by using a prepending a URL piece with a colon, i.e. :var_name. By default, they are matched by the pattern [0-9A-Za-z\_]+.
 
 	// Will match /[0-9A-Za-z_-]+ and put the value of 'name' in $_GET
 	Moor::route('/:name', 'my_callback');
