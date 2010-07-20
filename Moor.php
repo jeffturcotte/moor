@@ -143,6 +143,13 @@ class Moor {
 	 * @var array
 	 **/
 	private static $uncompiled_routes = array();
+	
+	/**
+	 * The prefix to add to $url_string when calling ::route()
+	 * 
+	 * @var string
+	 */
+	private static $url_prefix = '';
 
 
 	// ==============
@@ -465,6 +472,8 @@ class Moor {
 			);
 		}
 		
+		$url_string = self::$url_prefix . $url_string;
+		
 		if ($callback_string instanceof Closure) {
 			$function = $callback_string;
 			$callback_string = '';
@@ -571,6 +580,18 @@ class Moor {
 	public static function setNotFoundCallback($callback)
 	{
 		self::$not_found_callback = $callback;
+		return self::getInstance();
+	}
+	
+	/**
+	 * Sets a string to prefix to $url_string when calling ::route()
+	 *
+	 * @param string $prefix  The string to prefix
+	 * @return object  The Moor instance for chaining
+	 **/
+	public static function setUrlPrefix($prefix)
+	{
+		self::$url_prefix = $prefix;
 		return self::getInstance();
 	}
 

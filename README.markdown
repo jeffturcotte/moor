@@ -119,6 +119,12 @@ It's nice when you chain it on the end of some routes.
 		route('/page1', 'page_one')->
 		route('/page2', 'page_two')->
 		run();
+
+Moor::setUrlPrefix can be used to route URLs which all have a common string at the beginning, such as when installed in a subfolder of a website. The prefix will be added to every $url_string passed to Moor::route.
+
+	Moor::setUrlPrefix('/folder/to/route/under/')->
+		route('page1', 'page_one')->
+		route('page2', 'page_two');
 		
 ### Request Parameters
 
