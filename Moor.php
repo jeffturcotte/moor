@@ -8,7 +8,7 @@
  * @license    MIT (see LICENSE or bottom of this file)
  * @package    Moor
  * @link       http://github.com/jeffturcotte/moor
- * @version    1.0.0b4
+ * @version    1.0.0b5
  */
 class Moor {
 	/**
@@ -61,18 +61,11 @@ class Moor {
 	private static $active_function = NULL;
 
 	/**
-	 * Internal cache object
+	 * The camelize() cache
 	 *
 	 * @var array
-	 **/
-	private static $cache = NULL;
-
-	/**
-	 * Id for cache, defaults to HTTP_HOST
-	 *
-	 * @var string
-	 **/
-	private static $cache_key = NULL;
+	 */
+	private static $camelize = array();
 
 	/**
 	 * Default pattern to match :id params in incoming urls
@@ -101,6 +94,13 @@ class Moor {
 	 * @var object Moor
 	 */ 
 	private static $instance = NULL;
+
+	/**
+	 * The link_to() cache
+	 *
+	 * @var array
+	 */
+	private static $link_to = array();
 
 	/**
 	 * Debug messages
@@ -138,11 +138,11 @@ class Moor {
 	private static $running = FALSE;
 
 	/**
-	 * All routes that have yet to be compiled
-	 * 
+	 * The underscore() cache
+	 *
 	 * @var array
-	 **/
-	private static $uncompiled_routes = array();
+	 */
+	private static $underscorize = array();
 	
 	/**
 	 * The prefix to add to $url_string when calling ::route()
@@ -155,24 +155,6 @@ class Moor {
 	// ==============
 	// = Public API =
 	// ==============
-
-	/**
-	 * Enable persistent caching through APC
-	 *
-	 * @return object  The Moor instance for chaining
-	 */
-	public static function enableCache()
-	{
-		if (!extension_loaded('apc') || !isset($_SERVER['HTTP_HOST'])) {
-			throw new MoorProgrammerException(
-				'Caching cannot be enabled. APC doesn\'t appear to be loaded or there is no $_SERVER[\'HTTP_HOST\'] to use as a unique key'
-			);
-		}
-		
-		self::$enable_cache = TRUE;
-		
-		return self::getInstance();
-	}
 
 	/**
 	 * Enable or disable the debugging
@@ -195,12 +177,6 @@ class Moor {
 	 */
 	public static function linkTo($key)
 	{
-		if (!self::$running) {
-			throw new MoorProgrammerException(
-				'linkTo() cannot be used until routing has been started with run().'
-			);
-		}
-		
 		$param_values    = func_get_args();
 		$callback_string = array_shift($param_values);
 		$callback_string = trim($callback_string);
@@ -213,7 +189,7 @@ class Moor {
 			}
 		}
 		
-		if (!isset(self::$cache->link_to[$key])) {
+		if (!isset(self::$link_to[$key])) {
 			//self::$cache_for_linkTo[$key] = FALSE;
 			$best_route = NULL;
 			$param_names = preg_split('/(\s+:)|(\s+)|((?<!:):(?!:))/', $callback_string);
@@ -292,11 +268,11 @@ class Moor {
 				
 				$cache->url = $url;
 				
-				self::$cache->link_to[$key] = $cache;
+				self::$link_to[$key] = $cache;
 			}
 		}
 		
-		$cache =& self::$cache->link_to[$key];
+		$cache =& self::$link_to[$key];
 		
 		if ($cache == FALSE) {
 			return '#';
@@ -481,12 +457,25 @@ class Moor {
 			$callback_string = '';
 		}
 		
-		$route = (object) 'uncompiled_route';
-		$route->url      = $url_string;
-		$route->callback = $callback_string;
+		$route = (object) 'route';
+		$route->url      = self::parseUrl($url_string);
+		$route->callback = self::parseCallback($callback_string);
 		$route->function = $function;
 		
-		array_push(self::$uncompiled_routes, $route);
+		// validate that the url and callback use the same callback params
+		
+		$diff = array_merge(
+			array_diff_key($route->callback->params, $route->url->callback_params),
+			array_diff_key($route->url->callback_params, $route->callback->params)
+		);
+		
+		if (count($diff)) {
+			throw new MoorProgrammerException(
+				'Route: ' . $route->url->scalar . ', url and callback have different callback params: ' . join(',', array_keys($diff))
+			);
+		}
+		
+		array_push(self::$routes, $route);
 		
 		return self::getInstance();
 	}
@@ -498,27 +487,13 @@ class Moor {
 	 */
 	public static function run() 
 	{	
-		self::loadCache();
-		
-		if (!self::$enable_cache) {
-			self::clearCache();
-		}
-			
 		self::$running = TRUE;
 		self::$request_path = preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']);
-		
-		self::compile();
-		
-		if (isset(self::$cache->matched_routes[self::$request_path])) {
-			self::dispatchRoute(self::$cache->matched_routes[self::$request_path], FALSE, FALSE);
-		}
 		
 		$old_GET = $_GET;
 		$_GET = array();
 		
 		foreach(self::$routes as $route) {
-			self::$cache->matched_routes[self::$request_path] = $route;
-			
 			self::$active_callback = NULL;
 			self::$active_namespace = NULL;
 			self::$active_class = NULL;
@@ -532,33 +507,16 @@ class Moor {
 			try {
 				self::dispatchRoute($route);
 			} catch (MoorContinueException $e) {
-				unset(self::$cache->matched_routes[self::$request_path]);
 				continue;
 			} catch (MoorNotFoundException $e) {
-				unset(self::$cache->matched_routes[self::$request_path]);
 				break;
 			}
-			
-			unset(self::$cache->matched_routes[self::$request_path]);
 		}
 		
 		self::$messages[] = 'No Valid Matches Found. Running Not Found callback: ' . self::$not_found_callback;
 		
-		self::saveCache();
 		call_user_func(self::compat(self::$not_found_callback));
 		exit();
-	}
-	
-	/**
-	 * Sets the cache key
-	 *
-	 * @param string $key The server unique APC key to be used for caching
-	 * @return object  The Moor instance for chaining
-	 */
-	public static function setCacheKey($key)
-	{
-		self::$cache_key = $key;
-		return self::getInstance();
 	}
 	
 	/**
@@ -663,8 +621,8 @@ class Moor {
 		$upper = (int) $upper;
 		$key   = "{$upper}/{$original}";
 		
-		if (isset(self::$cache->camelize[$key])) {
-			return self::$cache->camelize[$key];
+		if (isset(self::$camelize[$key])) {
+			return self::$camelize[$key];
 		}
 		
 		$string = $original;
@@ -682,73 +640,10 @@ class Moor {
 			$string = preg_replace('/(_([a-z0-9]))/e', 'strtoupper("\2")', $string);
 		}
 		
-		self::$cache->camelize[$key] =& $string;
+		self::$camelize[$key] =& $string;
 		return $string;
 	}
 
-	/**
-	 * Compiles routes for routing. Called from run();
-	 *
-	 * @return void
-	 */
-	private static function compile()
-	{
-		if (self::$cache->compiled) {
-			self::$routes = self::$cache->compiled_routes;
-			return;
-		}
-		
-		foreach(self::$uncompiled_routes as $uncompiled_route) {
-			
-			$route = (object) 'route';
-			
-			$route->url      = self::parseUrl($uncompiled_route->url);
-			$route->callback = self::parseCallback($uncompiled_route->callback);
-			$route->function = $uncompiled_route->function;
-			
-			// validate that the url and callback use the same callback params
-			
-			$diff = array_merge(
-				array_diff_key($route->callback->params, $route->url->callback_params),
-				array_diff_key($route->url->callback_params, $route->callback->params)
-			);
-			
-			if (count($diff)) {
-				throw new MoorProgrammerException(
-					'Route: ' . $route->url->scalar . ', url and callback have different callback params: ' . join(',', array_keys($diff))
-				);
-			}
-			
-			array_push(self::$routes, $route);
-		}
-		
-		self::$cache->compiled = TRUE;
-		self::$cache->compiled_routes =& self::$routes;
-		self::saveCache();
-	}
-	
-	/**
-	 * Determines whether or we can enable the APC cache
-	 *
-	 * @return boolean
-	 */
-	private static function canCache()
-	{
-		return (extension_loaded('apc') && self::getCacheKey());
-	}
-	
-	/**
-	 * Clear the APC cache
-	 *
-	 * @return void
-	 */
-	private static function clearCache() 
-	{
-		if (self::canCache()) {
-			return apc_delete(self::getCacheKey());
-		}
-	}
-	
 	/**
 	 * Provides a compatibility layer for PHP 5.2 style static callbacks to
 	 * work with PHP 5.1.
@@ -777,9 +672,6 @@ class Moor {
 		}
 		
 		self::$messages[] = 'Match. Request path ' . self::$request_path . ' matched URL definition "' . $route->url->scalar . '"';
-		
-		self::$cache->matched_routes[self::$request_path] = $route;
-		self::saveCache();
 		
 		foreach($matches as $name => $param) {
 			if (is_string($name)) {
@@ -994,23 +886,7 @@ class Moor {
 		return $request_params;
 	}
 	
-	/**
-	 * Gets the cache key
-	 *
-	 * @return string
-	 */
-	private static function getCacheKey()
-	{
-		if (!self::$cache_key) {
-			if (!isset($_SERVER['HTTP_HOST'])) {
-				throw new MoorProgrammerException('Caching was enabled, but there is no value within $_SERVER[\'HTTP_HOST\'] to use as an APC key. Manually set the key with Moor::setCacheKey.');
-			}
-			
-			self::$cache_key = $_SERVER['HTTP_HOST'];
-		}
-		return 'Moor:'.self::$cache_key;
-	}
-	
+
 	/**
 	 * Gets instance of Moor for chaining methods
 	 *
@@ -1042,31 +918,6 @@ class Moor {
 		}
 		
 		return $callback_string;
-	}
-
-	/**
-	 * Load the cache, whether local or APC
-	 *
-	 * @return void
-	 */
-	private static function loadCache()
-	{
-		if (self::$cache) {
-			return;
-		}		
-		if (self::$enable_cache) {
-			self::$cache = apc_fetch(self::getCacheKey());
-		}
-		if (!self::$cache) {
-			// create the cache if it doesn't exist in apc yet
-			self::$cache = (object) 'Moor Cache';
-			self::$cache->camelize = array();
-			self::$cache->compiled = FALSE;
-			self::$cache->underscorize = array();
-			self::$cache->compiled_routes = array();
-			self::$cache->matched_routes = array();
-			self::$cache->link_to = array();
-		}
 	}
 
 	/**
@@ -1223,20 +1074,6 @@ class Moor {
 	}
 	
 	/**
-	 * Save the cache object to APC
-	 *
-	 * @return void
-	 */
-	private static function saveCache() 
-	{
-		if (!self::$enable_cache) { 
-			return; 
-		}
-		
-		apc_store(self::getCacheKey(), self::$cache);
-	}
-
-	/**
 	 * Converts a `camelCase` or `underscore_notation` string to `underscore_notation`
 	 *
 	 * Derived from MIT fGrammer::camelize
@@ -1269,8 +1106,8 @@ class Moor {
 	{
 		$key = $string;
 		
-		if (isset(self::$cache->underscorize[$key])) {
-			return self::$cache->underscorize[$key];
+		if (isset(self::$underscorize[$key])) {
+			return self::$underscorize[$key];
 		}
 		
 		$original = $string;
@@ -1293,7 +1130,7 @@ class Moor {
 			$string = strtolower($string);
 		}
 		
-		self::$cache->underscorize[$key] =& $string;
+		self::$underscorize[$key] =& $string;
 		return $string;
 	}
 

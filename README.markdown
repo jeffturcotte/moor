@@ -345,18 +345,6 @@ Debugging is off by default. If you are creating your own 404 page, you can get 
 
 	Moor::getMessages();
 
-## Caching
-
-Enable caching for routes and links through APC with:
-
-	Moor::enableCache();
-	
-By default, Moor will use the the value in $\_SERVER['HTTP_HOST'] for the unique APC key, but if you need to use a custom key, you can with:
-
-	Moor::setCacheKey('my_custom_apc_key');
-	
-Caching is not recommended unless there is a noticeable slowdown. You will most likely not notice any performance gain unless you have a very large amount of routes and are linking to a very large set of unique callbacks on a single page. Other than a few rare edge cases, if this is how your overall application is structured, you're most likely doing it wrong.
-	
 ## Built-In Controllers
 
 Moor currently comes with two built in controller classes. MoorAbstractController and MoorActionController. If neither suit your needs, you're encouraged to extend MoorAbstractController and create your own controller classes.
