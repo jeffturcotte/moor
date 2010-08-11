@@ -8,7 +8,7 @@
  * @license    MIT (see LICENSE or bottom of this file)
  * @package    Moor
  * @link       http://github.com/jeffturcotte/moor
- * @version    1.0.0b5
+ * @version    1.0.0b6
  */
 class Moor {
 	/**
@@ -96,7 +96,7 @@ class Moor {
 	private static $instance = NULL;
 
 	/**
-	 * The link_to() cache
+	 * The linkTo() cache
 	 *
 	 * @var array
 	 */
@@ -115,6 +115,13 @@ class Moor {
 	 * @var string
 	 **/
 	private static $not_found_callback = 'Moor::routeNotFoundCallback';
+
+	/**
+	 * The paramsTo() cache
+	 *
+	 * @var array
+	 */
+	private static $params_to = array();
 
 	/**
 	 * The request path
@@ -167,7 +174,7 @@ class Moor {
 		return self::getInstance();
 		
 	}
-
+	
 	/**
 	 * Find the URL where a particular callback lives
 	 *
@@ -180,14 +187,7 @@ class Moor {
 		$param_values    = func_get_args();
 		$callback_string = array_shift($param_values);
 		$callback_string = trim($callback_string);
-		
-		if (strpos($callback_string, '*::') === 0 && self::getActiveClass()) {
-			$callback_string = self::getActiveClass() . substr($callback_string, 1);
-		} else if (strpos($callback_string, '*\\') === 0 || preg_match('/^\*_[A-Z][A-Za-z0-9]*::/', $callback_string)) {
-			if (self::getActiveNamespace()) {
-				$callback_string = self::getActiveNamespace() . substr($callback_string, 1);
-			}
-		}
+		$callback_string = self::expandCallback($callback_string);
 		
 		if (!isset(self::$link_to[$key])) {
 			//self::$cache_for_linkTo[$key] = FALSE;
@@ -421,17 +421,41 @@ class Moor {
 	 */
 	public static function pathTo($callback, $directory_separator=NULL)
 	{
-		$string = $callback;
-		
-		if (strpos('*::', $callback) === 0) {
-			$string = self::getActiveClass() . substr($callback, 1);
-		}
-		
-		if (strpos('*\\', $callback) === 0 || preg_match('/^\*_[A-Z][A-Za-z0-9]*::/', $callback)) {
-			$string = self::getActiveNamespace() . substr($callback, 1);
-		}
-		
+		$string = self::expandCallback($callback);
 		return self::makePath($string, $directory_separator);
+	}
+	
+	/**
+	 * Find the params to a particular callback. Will return an array of valid param
+	 * names from all URLs associated with a callback.
+	 *
+	 * @param string $callback The callback to search for
+	 * @return array The params from all URLs associated with a callback
+	 */
+	public static function paramsTo($callback)
+	{
+		$callback = self::expandCallback($callback);
+		
+		if (isset(self::$params_to[$callback])) {
+			return self::$params_to[$callback];
+		}
+		
+		$params = array();
+
+		foreach(self::$routes as $route) {
+			if (preg_match($route->callback->pattern, $callback)) {
+				$route_params = array();
+				
+				foreach($route->url->request_params as $name => $request_param) {
+					array_push($route_params, $name);
+				}
+				
+				array_push($params, $route_params);
+			}
+		}
+		
+		self::$params_to[$callback] = $params;
+		return self::$params_to[$callback];
 	}
 
 	/**
@@ -444,6 +468,10 @@ class Moor {
 	 */
 	public static function route($url_string, $callback_string, $function=NULL)
 	{
+		// reset caches using routes
+		self::$link_to = array();
+		self::$params_to = array();
+		
 		if (self::$running == TRUE) {
 			throw new MoorProgrammerException(
 				'No new routes can be added once routing has been started.'
@@ -740,6 +768,26 @@ class Moor {
 		
 		self::$messages[] = 'Skipping callback: ' . $callback_string . '. Not a valid method or function.';
 		self::triggerContinue();
+	}
+
+	/**
+	 * Expands a callback starting with *:: or *\ or *_ to include the active class/namespace
+	 *
+	 * @param string  $callback 
+	 * @return string The expanded callback
+	 */
+	private static function expandCallback($callback) {
+		$string = $callback;
+		
+		if (strpos($callback, '*::') === 0) {
+			$string = self::getActiveClass() . substr($callback, 1);
+		}
+		
+		if (strpos($callback, '*\\') === 0 || preg_match('/^\*_[A-Z][A-Za-z0-9]*::/', $callback)) {
+			$string = self::getActiveNamespace() . substr($callback, 1);
+		}
+		
+		return $string;
 	}
 
 	/**
