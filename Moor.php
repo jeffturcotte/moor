@@ -8,7 +8,7 @@
  * @license    MIT (see LICENSE or bottom of this file)
  * @package    Moor
  * @link       http://github.com/jeffturcotte/moor
- * @version    1.0.0b6
+ * @version    1.0.0b7
  */
 class Moor {
 	/**
@@ -292,7 +292,11 @@ class Moor {
 		$excluded_params = array_intersect_key($params, $cache->excluded_param_names);
 		
 		foreach($included_params as $name => $value) {
-			$url = str_replace(':'.$name, $value, $url);
+			$url = str_replace(':'.$name, urlencode($value), $url);
+		}
+		
+		foreach($excluded_params as $name => $value) {
+			$excluded_params[$name] = urlencode($value);
 		}
 		
 		if (!empty($excluded_params)) {
@@ -426,11 +430,11 @@ class Moor {
 	}
 	
 	/**
-	 * Find the params to a particular callback. Will return an array of valid param
-	 * names from all URLs associated with a callback.
+	 * Find the params to a particular callback. Will return an array of arrays.
+	 * one per router with valid param of the route's URL.
 	 *
 	 * @param string $callback The callback to search for
-	 * @return array The params from all URLs associated with a callback
+	 * @return array The params
 	 */
 	public static function paramsTo($callback)
 	{
@@ -516,7 +520,7 @@ class Moor {
 	public static function run() 
 	{	
 		self::$running = TRUE;
-		self::$request_path = preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']);
+		self::$request_path = urldecode(preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']));
 		
 		$old_GET = $_GET;
 		$_GET = array();
@@ -703,7 +707,7 @@ class Moor {
 		
 		foreach($matches as $name => $param) {
 			if (is_string($name)) {
-				$_GET[$name] = $param;
+				$_GET[$name] = urldecode($param);
 			}
 		}
 		
