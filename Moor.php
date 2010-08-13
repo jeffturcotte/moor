@@ -216,7 +216,7 @@ class Moor {
 					
 					$dist = levenshtein($callback->finder, $callback_string);
 					$accu = strrpos($callback->finder, '*');
-					$diff = abs(count($route->url->request_params) - count($param_names));
+					$diff = count(array_diff($route->url->request_params, $param_names));
 					$sect = count(array_intersect_key(array_flip(array_keys($route->url->request_params)), $param_names_flipped));
 					
 					$is_best = (
@@ -224,7 +224,7 @@ class Moor {
 						$low_dist > $dist ||
 						$low_dist == $dist && $top_accu < $accu ||
 						$low_dist == $dist && $top_accu == $accu && $top_sect < $sect ||
-						$low_dist == $dist && $top_accu == $accu && $top_sect <= $sect && $top_diff > $diff 
+						$low_dist == $dist && $top_accu == $accu && $top_sect <= $sect && $low_diff > $diff 
 					);
 					
 					if ($is_best) {
@@ -232,7 +232,7 @@ class Moor {
 						$low_dist = $dist;
 						$top_accu = $accu;
 						$top_sect = $sect;
-						$top_diff = $diff;
+						$low_diff = $diff;
 					}
 				}
 			}
