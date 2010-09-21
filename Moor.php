@@ -216,7 +216,7 @@ class Moor {
 					
 					$dist = levenshtein($callback->finder, $callback_string);
 					$accu = strrpos($callback->finder, '*');
-					$diff = count(array_diff($route->url->request_params, $param_names));
+					$diff = count(array_diff(array_keys($route->url->request_params), $param_names));
 					$sect = count(array_intersect_key(array_flip(array_keys($route->url->request_params)), $param_names_flipped));
 					
 					$is_best = (
