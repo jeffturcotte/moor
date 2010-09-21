@@ -1070,7 +1070,7 @@ class Moor {
 	{
 		$url = (object) $url_string;
 		$url->shorthand = trim($url_string);
-		$url->pattern   = $url->shorthand;
+		$url->pattern   = str_replace('#', '\\#', $url->shorthand);
 		
 		// determine whether we should match from beginning
 		// to end of the url, or one or the other, or not at all
