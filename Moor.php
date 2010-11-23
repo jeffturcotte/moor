@@ -557,8 +557,11 @@ class Moor {
 		
 		self::$messages[] = 'No Valid Matches Found. Running Not Found callback: ' . self::$not_found_callback;
 		
-		call_user_func(self::compat(self::$not_found_callback));
-		exit();
+		$route = (object) 'route';
+		$route->url      = self::parseUrl('*');
+		$route->callback = self::parseCallback(self::$not_found_callback);
+		$route->function = NULL;
+		self::dispatchRoute($route);
 	}
 	
 	/**
@@ -1092,13 +1095,18 @@ class Moor {
 		$match_start = TRUE;
 		$match_end   = TRUE;
 		
-		if (isset($url->scalar[0]) && $url->scalar[0] == '*') {
-			$match_start = FALSE;
-			$url->shorthand = substr($url->shorthand, 1);
-		}
-		if ($url->scalar[strlen($url->scalar)-1] == '*') {
-			$match_end = FALSE;
-			$url->shorthand = substr($url->shorthand, 0, -1);
+		if ($url->scalar == '*') {
+			$url->pattern   = '.*';
+			$url->shorthand = '';
+		} else {
+			if (isset($url->scalar[0]) && $url->scalar[0] == '*') {
+				$match_start = FALSE;
+				$url->shorthand = substr($url->shorthand, 1);
+			}
+			if ($url->scalar[strlen($url->scalar)-1] == '*') {
+				$match_end = FALSE;
+				$url->shorthand = substr($url->shorthand, 0, -1);
+			}
 		}
 		
 		// parse out callback params with formatting rules
