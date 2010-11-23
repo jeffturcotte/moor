@@ -296,7 +296,7 @@ class Moor {
 		}
 		
 		foreach($excluded_params as $name => $value) {
-			$excluded_params[$name] = urlencode($value);
+			$excluded_params[$name] = $value;
 		}
 		
 		if (!empty($excluded_params)) {
