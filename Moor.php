@@ -1005,7 +1005,11 @@ class Moor {
 		
 		$string = str_replace('::', $ds, $callback_string);
 		$string = str_replace('\\', $ds, $string);
-		$string = preg_replace('/_([A-Z])/', $ds.'$1', $string);
+		$string = preg_replace(
+			'/_([A-Z])/',
+			str_replace('\\', '\\\\', $ds).'$1',
+			$string
+		);
 		
 		$pieces = explode($ds, $string);
 		foreach($pieces as $n => $piece) {
