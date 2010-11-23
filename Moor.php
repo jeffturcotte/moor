@@ -1025,7 +1025,7 @@ class Moor {
 	 * @param  string $callback_string The callback
 	 * @return object The callback object
 	 */
-	private static function &parseCallback($callback_string)
+	private static function parseCallback($callback_string)
 	{
 		$callback = (object) trim($callback_string, '\\');
 		
@@ -1080,7 +1080,7 @@ class Moor {
 	 * @param  string $url_string    The URL string (either shorthand or a regular expression)
 	 * @return object The URL object
 	 */
-	private static function &parseUrl($url_string)
+	private static function parseUrl($url_string)
 	{
 		$url = (object) $url_string;
 		$url->shorthand = trim($url_string);
