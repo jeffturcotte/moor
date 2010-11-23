@@ -1243,8 +1243,12 @@ class MoorNotFoundException extends MoorException {}
 // = Includes =
 // ============
 
-require 'MoorAbstractController.php';
-require 'MoorActionController.php';
+if (!class_exists('MoorAbtractController', FALSE)) {
+	require 'MoorAbstractController.php';
+}
+if (!class_exists('MoorActionController', FALSE)) {
+	require 'MoorActionController.php';
+}
 
 // ===========
 // = License =
