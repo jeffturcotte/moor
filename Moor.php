@@ -5,10 +5,11 @@
  * @copyright  Copyright (c) 2010 Jeff Turcotte, others
  * @author     Jeff Turcotte [jt] <jeff.turcotte@gmail.com>
  * @author     Will Bond [wb] <will@flourishlib.com>
+ * @author     Will Bond, iMarc LLC [wb-imarc] <will@imarc.net>
  * @license    MIT (see LICENSE or bottom of this file)
  * @package    Moor
  * @link       http://github.com/jeffturcotte/moor
- * @version    1.0.0b7
+ * @version    1.0.0b8
  */
 class Moor {
 	/**
