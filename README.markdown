@@ -1,10 +1,10 @@
 # Moor
 
-A URL Routing/Linking/Controller library for PHP 5.
+A URL Routing/Linking/Controller library for PHP 5.1+.
 
 - Introduction
 - Concepts To Understand
-- Hello World (PHP 5.2)
+- Hello World (PHP 5.1+)
 - Hello World (PHP 5.3+)
 - Initial Set Up
 - URL Routing
@@ -37,7 +37,7 @@ If you don't have a basic understanding of the following concepts/techniques, yo
 
 [Wikipedia MVC Page](http://en.wikipedia.org/wiki/Model-view-controller)
 	
-## Hello World (PHP 5.2)
+## Hello World (PHP 5.1+)
 
 	<?php
 	Moor::route('/hello/:name', 'hello_world')->run();
@@ -263,7 +263,7 @@ This can also be used on the namespace level:
 	Moor::linkTo('*\my_function');
 	Moor::linkTo('*\Users::edit');
 	
-	// 5.2 style namespaces will consider anything before an _CamelCase class name as a namespace
+	// 5.1+ style namespaces will consider anything before an _CamelCase class name as a namespace
 	// Example: Admin_Users::edit => namespace will be Admin
 	Moor::linkTo('*_Users::edit');
 	
