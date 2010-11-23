@@ -417,6 +417,16 @@ class Moor {
 	}
 	
 	/**
+	 * Gets the callback for when a route is not found.
+	 *
+	 * @return callback  The callback to use for executing the not found functionality
+	 **/
+	public static function getNotFoundCallback()
+	{
+		return self::$not_found_callback;
+	}
+	
+	/**
 	 * Get the path to the supplied callback
 	 *
 	 * @param string $callback 
