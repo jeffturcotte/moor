@@ -2,14 +2,14 @@
 /**
  * Moor is a URL Routing/Linking/Controller library for PHP 5
  *
- * @copyright  Copyright (c) 2010 Jeff Turcotte, others
+ * @copyright  Copyright (c) 2010-2011 Jeff Turcotte, others
  * @author     Jeff Turcotte [jt] <jeff.turcotte@gmail.com>
  * @author     Will Bond [wb] <will@flourishlib.com>
  * @author     Will Bond, iMarc LLC [wb-imarc] <will@imarc.net>
  * @license    MIT (see LICENSE or bottom of this file)
  * @package    Moor
  * @link       http://github.com/jeffturcotte/moor
- * @version    1.0.0b8
+ * @version    1.0.0b9
  */
 class Moor {
 	/**
@@ -301,7 +301,14 @@ class Moor {
 		}
 		
 		if (!empty($excluded_params)) {
+			// Remove any fragment so we can place it fter the query string
+			if (preg_match('/#.*$/', $url, $match)) {
+				$url = substr($url, 0, 0 - strlen($match[0]));
+			}
 			$url .= '?' . http_build_query($excluded_params);
+			if (!empty($match)) {
+				$url .= $match[0];
+			}
 		}
 		
 		return $url;
@@ -1279,7 +1286,7 @@ if (!class_exists('MoorActionController', FALSE)) {
 
 // Moor - a routing, linking and controller library for PHP5
 // 
-// Copyright (c) 2010 Jeff Turcotte, others
+// Copyright (c) 2010-2011 Jeff Turcotte, others
 // 
 // Permission is hereby granted, free of charge, to any person
 // obtaining a copy of this software and associated documentation
