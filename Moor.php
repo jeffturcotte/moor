@@ -62,6 +62,13 @@ class Moor {
 	private static $active_function = NULL;
 
 	/**
+	 * The currently active proxy URI
+	 *
+	 * @var string
+	 */
+	private static $active_proxy_uri = NULL;
+
+	/**
 	 * The camelize() cache
 	 *
 	 * @var array
@@ -132,6 +139,13 @@ class Moor {
 	private static $request_path = NULL;
 
 	/**
+	 * Restless URLs
+	 *
+	 * @var boolean
+	 */
+	private static $restless_urls = FALSE;
+
+	/**
 	 * All routes in their compiled form
 	 *
 	 * @var array
@@ -176,6 +190,17 @@ class Moor {
 		
 	}
 	
+	/**
+	 * Enable automatic redirecting for added/missing slashes at the end of
+	 * the request path
+	 *
+	 * @return void
+	 */
+	public static function enableRestlessURLs()
+	{
+		self::$restless_urls = TRUE;
+	}
+
 	/**
 	 * Find the URL where a particular callback lives
 	 *
@@ -311,6 +336,10 @@ class Moor {
 			}
 		}
 		
+		if (isset(self::$active_proxy_uri)) {
+			$url = self::$active_proxy_uri . $url;
+		}
+
 		return $url;
 	}
 
@@ -425,6 +454,26 @@ class Moor {
 	}
 	
 	/**
+	 * Returns the proxy URI for the currently running route
+	 *
+	 * @return string
+	 */
+	public static function getActiveProxyURI()
+	{
+		return self::$active_proxy_uri;
+	}
+
+	/**
+	 * Returns the request path for the current request
+	 *
+	 * @return string
+	 */
+	public static function getRequestPath()
+	{
+		return self::$request_path;
+	}
+
+	/**
 	 * Gets the callback for when a route is not found.
 	 *
 	 * @return callback  The callback to use for executing the not found functionality
@@ -538,7 +587,14 @@ class Moor {
 	public static function run() 
 	{	
 		self::$running = TRUE;
+
+		if (!empty($_SERVER['PATH_INFO'])) {
+			self::$active_proxy_uri = str_replace($_SERVER['PATH_INFO'], '', $_SERVER['REQUEST_URI']);
+			self::$request_path     = urldecode(preg_replace('#\?.*$#', '', $_SERVER['PATH_INFO']));
+		} else {
 		self::$request_path = urldecode(preg_replace('#\?.*$#', '', $_SERVER['REQUEST_URI']));
+		}
+
 		
 		$old_GET = $_GET;
 		$_GET = array();
@@ -721,6 +777,21 @@ class Moor {
 	private static function dispatchRoute($route)
 	{
 		if (!preg_match($route->url->pattern, self::$request_path, $matches)) {
+			if (self::$restless_urls) {
+				$rev      = strrev(self::$request_path);
+				$try_path = ($rev{0} == '/')
+					? substr(self::$request_path, 0, -1)
+					: self::$request_path . '/';
+
+				if (preg_match($route->url->pattern, $try_path)) {
+					$new_location = (!empty($_SERVER['PATH_INFO']))
+						? self::$active_proxy_uri . $try_path
+						: $try_path;
+					header('Location: ' . $new_location, TRUE, 301);
+					exit();
+				}
+			}
+
 			return FALSE;
 		}
 		
