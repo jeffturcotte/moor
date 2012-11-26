@@ -1141,7 +1141,7 @@ class Moor {
 		$short_class = $class;
 		
 		if (strpos($class, '\\') !== FALSE) {
-			preg_match('/(?P<namespace>.*)\\\\(?P<short_class>)[a-zA-Z][a-zA-Z0-9]*)$/', $class, $matches);
+			preg_match('/(?P<namespace>.*)\\\\(?P<short_class>[a-zA-Z][a-zA-Z0-9]*)$/', $class, $matches);
 			$namespace  = (isset($matches['namespace']))  ? $matches['namespace']  : NULL;
 			$short_class = (isset($matches['short_class'])) ? $matches['short_class'] : NULL;
 		} else if (strpos($class, '_') !== FALSE) {
