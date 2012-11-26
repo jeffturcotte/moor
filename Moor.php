@@ -1213,7 +1213,7 @@ class Moor {
 	 *
 	 * @return void
 	 */
-	protected static function routeNotFoundCallback()
+	public static function routeNotFoundCallback()
 	{
 		header("HTTP/1.1 404 Not Found");
 		echo '<h1>NOT FOUND</h1>';
@@ -1313,8 +1313,8 @@ class Moor {
 			self::$messages[] = 'Continue. Method ' . $callback . ' doesn\'t exist.';
 			self::triggerContinue();
 		}
-		
-		if (!$class->isSubclassOf('MoorAbstractController')) {
+
+		if ($class->getName() != 'Moor' && !$class->isSubclassOf('MoorAbstractController')) {
 			self::$messages[] = 'Continue. Class for method ' . $callback . '. isn\'t a subclass of MoorAbstractController.';
 			self::triggerContinue();
 		}
