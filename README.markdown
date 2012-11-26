@@ -165,7 +165,7 @@ Typically, we need to format the callback params to fit with our own coding stan
 
 	Moor::route('/@class/:id/@method', '@class(uc)::@method(lc)');
 
-	// incoming /user/4/delete_me resolves to User::delete AND $_GET['id'] = 4
+	// incoming /user/4/delete resolves to User::delete AND $_GET['id'] = 4
 	// incoming /user/5/activate resolves to User::activate AND $_GET['id'] = 5
 	// incoming /user/4/run_script resolves to User::runScript AND $_GET['id'] = 4
 	// incoming /groups/3/update resolves to Groups::update AND $_GET['id'] = 3
