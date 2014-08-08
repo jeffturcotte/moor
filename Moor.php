@@ -746,7 +746,10 @@ class Moor {
 		} else {
 			$string = strtolower($string);
 			if ($upper) { $string = strtoupper($string[0]) . substr($string, 1); }
-			$string = preg_replace('/(_([a-z0-9]))/e', 'strtoupper("\2")', $string);
+			$string = preg_replace_callback('/(_([a-z0-9]))/', function($matches) {
+				return strtoupper($matches[2]);
+			}, $string);
+
 		}
 		
 		self::$camelize[$key] =& $string;
